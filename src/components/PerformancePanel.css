@@ -1,0 +1,98 @@
+/* 카드 목록: 좁으면 한 줄씩, 넓은 화면(2/3 폭 이상 여유)에서는 두 열로 나눠 세로 길이를 줄입니다. */
+.perf-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  column-gap: 28px;
+}
+
+@media (min-width: 1100px) {
+  .perf-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1500px) {
+  .perf-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.perf-row {
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.perf-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.perf-spent {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.perf-bar {
+  margin-top: 6px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+
+.perf-bar > div {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #f4a7c3, #b9a7ec);
+}
+
+.perf-status {
+  display: block;
+  margin-top: 4px;
+  color: #7a6f86;
+}
+
+.perf-benefit {
+  margin-top: 4px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.perf-sub {
+  margin-top: 2px;
+}
+
+.perf-sub-block {
+  margin-top: 4px;
+}
+
+/* 한도 사용량 막대: 사용한 만큼 채워지고, 다 쓰면 붉은 톤으로 바뀝니다. */
+.limit-bar {
+  margin-top: 4px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.07);
+  overflow: hidden;
+}
+
+.limit-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #9fd3c7, #7fb6d9);
+  transition: width 0.3s ease;
+}
+
+.limit-bar-fill.over {
+  background: linear-gradient(90deg, #f4a7a7, #e0707f);
+}
+
+.perf-edit {
+  margin-left: 8px;
+  font-size: 12px;
+  padding: 3px 10px;
+  white-space: nowrap;
+  cursor: pointer;
+}

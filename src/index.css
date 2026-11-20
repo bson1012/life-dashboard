@@ -1,0 +1,27 @@
+:root {
+  --bg: #f3f3f8;
+  --card: #ffffff;
+  --text: #1d1d28;
+  --muted: #8b8b99;
+  --line: #ececf2;
+  --accent: #6d6fe0;
+  --accent-soft: #e9e9fb;
+  --pink: #e8456d;
+  --green: #1fa971;
+  --dark: #16161d;
+  --radius: 20px;
+  --shadow: 0 2px 12px rgba(20, 20, 40, 0.05);
+  font-family: system-ui, 'Pretendard', 'Segoe UI', Roboto, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+}
+
+* {
+  box-sizing: border-box;
+}

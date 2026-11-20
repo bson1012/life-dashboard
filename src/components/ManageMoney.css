@@ -1,0 +1,184 @@
+/* 공통 .modal 의 max-width(420px)를 덮어써서 넓게 보이게 합니다. */
+.modal.manage-modal {
+  width: min(880px, 94vw);
+  max-width: min(880px, 94vw);
+  max-height: 86vh;
+  overflow-y: auto;
+}
+
+.manage-tabs {
+  margin: 14px 0;
+}
+
+.manage-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.manage-form .wide {
+  grid-column: 1 / -1;
+}
+
+.manage-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.manage-form-buttons {
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.manage-group-title {
+  margin: 14px 0 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #7a6f86;
+}
+
+.manage-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.manage-row-top {
+  align-items: flex-start;
+}
+
+.manage-row {
+  cursor: default;
+}
+
+.manage-row.dragging,
+.sub-chip.dragging {
+  opacity: 0.4;
+}
+
+.grip {
+  cursor: grab;
+  color: #b3a9bd;
+  user-select: none;
+  padding-top: 2px;
+}
+
+.sub-chip {
+  cursor: grab;
+}
+
+.manage-row .grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.sub-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.sub-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px 3px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+}
+
+.sub-chip button {
+  border: 0;
+  background: none;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.6;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.sub-add {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.sub-add input {
+  max-width: 220px;
+}
+
+/* 카드 할인 규칙 입력: 혜택 줄, 한도 구간 줄 */
+.rule-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.rule-title {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.rule-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.4fr auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.rate-input {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+}
+
+.rate-input select {
+  width: auto;
+  flex: 0 0 auto;
+}
+
+.rate-input input {
+  min-width: 0;
+  flex: 1;
+}
+
+.rule-row-one {
+  grid-template-columns: 1fr auto;
+}
+
+.rule-row:not(.rule-row-one) {
+  grid-template-columns: 1fr 1fr 1fr auto;
+}
+
+/* 사용처(참고용)는 줄 전체 너비로 길게 보이게 합니다. */
+.rule-examples {
+  grid-column: 1 / -1;
+  min-height: 44px;
+}
+
+.rule-block button.link-btn {
+  justify-self: start;
+}
+
+@media (max-width: 760px) {
+  .rule-row,
+  .rule-row:not(.rule-row-one) {
+    grid-template-columns: 1fr 1fr;
+  }
+  .manage-form {
+    grid-template-columns: 1fr;
+  }
+}
