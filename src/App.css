@@ -1110,11 +1110,12 @@ textarea {
 }
 
 .mini-bars {
-  flex: 1;
+  /* 칸 높이가 내용에 맞춰지므로 막대 영역 높이를 고정합니다 (높이 100% 막대가 접히지 않게) */
+  flex: none;
   display: flex;
   align-items: flex-end;
   gap: 8px;
-  min-height: 70px;
+  height: 96px;
   margin-top: 6px;
 }
 .mini-bars > div {
@@ -1532,7 +1533,149 @@ li.list-row-cat > .todo-settings {
   }
 }
 
-/* 휴대폰 하단 메뉴: 아이콘만 보이고, 평소엔 화면 아래로 숨어 있다가 손잡이를 위로 밀면 올라옵니다. */
+/* 휴대폰: 페이지 제목을 누르면 나오는 이동 메뉴 */
+.page-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  animation: page-menu-fade 0.2s ease-out;
+}
+/* 휴대폰 하단에서 올라오는 시트(바텀 시트) 모양 */
+.page-menu {
+  background: var(--card);
+  width: 100%;
+  border-radius: 20px 20px 0 0;
+  padding: 0 8px calc(16px + env(safe-area-inset-bottom));
+  display: grid;
+  gap: 2px;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.18);
+  animation: page-menu-up 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.page-menu-handle {
+  display: block;
+  width: 40px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--muted);
+  opacity: 0.5;
+  margin: 8px auto 6px;
+}
+.page-menu-title {
+  margin: 4px 12px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.page-menu button {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 56px;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 16px;
+  color: inherit;
+  padding: 0 14px;
+  border-radius: 14px;
+  cursor: pointer;
+  text-align: left;
+}
+.page-menu button:active {
+  background: rgba(127, 127, 127, 0.12);
+}
+.page-menu button.active {
+  color: var(--accent);
+  font-weight: 700;
+}
+.page-menu .nav-icon {
+  width: 24px;
+  height: 24px;
+  flex: none;
+}
+.page-menu-label {
+  flex: 1;
+}
+.page-menu-check {
+  font-size: 18px;
+  color: var(--accent);
+}
+@keyframes page-menu-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes page-menu-up {
+  from { transform: translateY(100%); }
+  to { transform: none; }
+}
+@media (max-width: 760px) {
+  .main h2 {
+    cursor: pointer;
+  }
+}
+
+/* 홈 화면: 세 개의 칸. 각 칸은 내용 높이대로 쌓여서 높이가 들쭉날쭉합니다. */
+.home-columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.home-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.todo-scroll {
+  max-height: 440px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+/* 관리 버튼: 데스크톱은 오른쪽 위, 휴대폰은 맨 아래 */
+.home-manage-btn {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 6px 16px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  flex: none;
+}
+.home-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.home-manage-bottom {
+  display: none;
+}
+@media (max-width: 760px) {
+  .home-columns {
+    grid-template-columns: 1fr;
+  }
+  .home-head .home-manage-btn {
+    display: none;
+  }
+  .home-manage-bottom {
+    display: flex;
+    justify-content: center;
+    margin-top: 24px;
+  }
+  .todo-scroll {
+    max-height: 360px;
+  }
+}
+
+/* 휴대폰 하단 메뉴: 아이콘만 보이고, 평소엔 화면 아래로 숨어 있다가 손잡이를 위로 밀면 올라옵니다. (지금은 사용하지 않음) */
 .tabbar-handle {
   display: none;
 }

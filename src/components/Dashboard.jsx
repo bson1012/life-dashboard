@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { useCollection } from '../data/useCollection';
+import DataManager from './DataManager';
 import { categoryColor } from '../utils/categoryColor';
 import { PAGES } from '../config/pages';
 import { summarize } from '../utils/ledger';
@@ -65,10 +67,40 @@ function Legend({ items }) {
   );
 }
 
+// 이번 달 카테고리별 사용률 (rows 를 공용/보연 개인으로 나눠서 넘깁니다)
+function CategoryTile({ title, rows, month, onClick }) {
+  const { expense, categories } = summarize(rows, month);
+  const slices = categories.map(([name, value]) => ({
+    label: name,
+    value,
+    color: categoryColor(name).bg, // 가계부와 같은 카테고리 색
+  }));
+  const legend = slices.slice(0, 5).map((s) => ({
+    ...s,
+    value: expense ? `${Math.round((s.value / expense) * 100)}%` : '0%',
+  }));
+  return (
+    <section className="glass tile clickable" onClick={onClick}>
+      <p className="tile-label">{title}</p>
+      {slices.length === 0 ? (
+        <small className="tile-foot">이번 달 지출 기록이 없어요.</small>
+      ) : (
+        <div className="chart-row">
+          <Donut slices={slices} center="지출" />
+          <Legend items={legend} />
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function Dashboard({ onNavigate }) {
+  const [dataOpen, setDataOpen] = useState(false);
   const tx = useCollection('transactions');
   const todos = useCollection('todos');
   const journal = useCollection('journal');
+  const lists = useCollection('lists');
+  const listItems = useCollection('listItems');
 
   const month = monthStr();
   const today = todayStr();
@@ -76,17 +108,8 @@ export default function Dashboard({ onNavigate }) {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? '좋은 아침이에요' : hour < 18 ? '좋은 오후예요' : '좋은 저녁이에요';
 
-  // 이번 달 지출과 카테고리별 금액
+  // 이번 달 지출 합계
   const { expense, categories } = summarize(tx.rows, month);
-  const catSlices = categories.map(([name, value], i) => ({
-    label: name,
-    value,
-    color: categoryColor(name).bg, // 가계부와 같은 카테고리 색
-  }));
-  const catLegend = catSlices.slice(0, 5).map((s) => ({
-    ...s,
-    value: `${Math.round((s.value / expense) * 100)}%`,
-  }));
 
   // 최근 7일 지출 막대
   const days = Array.from({ length: 7 }, (_, i) => {
@@ -117,6 +140,11 @@ export default function Dashboard({ onNavigate }) {
   const weekTodos = upcoming.filter((t) => t.date > tomorrow && t.date <= weekEnd);
   const whenLabel = (date) => (date <= today ? '오늘' : date === tomorrow ? '내일' : '이번 주');
 
+  // 할 일 리스트: 아직 안 끝난 할 일 전부(마감 있는 것 먼저, 마감 순). 칸 안에서 스크롤됩니다.
+  const openTodos = todos.rows
+    .filter((t) => !t.done)
+    .sort((a, b) => (a.dueAt ?? '9999').localeCompare(b.dueAt ?? '9999'));
+
   // 할 일 현황 (상태별 개수)
   const statusSlices = STATUS_META.map((s) => ({
     label: s.label,
@@ -144,100 +172,143 @@ export default function Dashboard({ onNavigate }) {
           <h2>{PAGES.home.label}</h2>
           <p className="home-date">{greeting} · {today}</p>
         </div>
+        <button
+          onClick={() => setDataOpen(true)}
+          className="home-manage-btn"
+        >
+          관리
+        </button>
       </header>
 
-      <div className="home-grid">
-        <section className="glass tile clickable" onClick={() => onNavigate('ledger')}>
-          <p className="tile-label">이번 달 지출</p>
-          <b className="tile-value">{formatWon(expense)}</b>
-          <div className="mini-bars">
-            {days.map((d) => (
-              <div key={d.key} title={`${d.key} ${formatWon(d.amt)}`}>
-                <i style={{ height: `${Math.max(4, (d.amt / maxDay) * 100)}%` }} />
+      <div className="home-columns">
+        {/* 첫 번째 칸: 지출 / 카테고리 사용률 */}
+        <div className="home-col">
+          <section className="glass tile clickable" onClick={() => onNavigate('ledger')}>
+            <p className="tile-label">이번 달 지출</p>
+            <b className="tile-value">{formatWon(expense)}</b>
+            <div className="mini-bars">
+              {days.map((d) => (
+                <div key={d.key} title={`${d.key} ${formatWon(d.amt)}`}>
+                  <i style={{ height: `${Math.max(4, (d.amt / maxDay) * 100)}%` }} />
+                </div>
+              ))}
+            </div>
+            <small className="tile-foot">최근 7일 지출 · {categories[0] ? `가장 많은 곳 ${categories[0][0]}` : '지출 없음'}</small>
+          </section>
+
+          <CategoryTile
+            title="이번 달 카테고리별 사용률 (공용)"
+            rows={tx.rows.filter((r) => !r.personal)}
+            month={month}
+            onClick={() => onNavigate('ledger')}
+          />
+          <CategoryTile
+            title="이번 달 카테고리별 사용률 (보연 개인)"
+            rows={tx.rows.filter((r) => r.personal)}
+            month={month}
+            onClick={() => onNavigate('ledger')}
+          />
+        </div>
+
+        {/* 두 번째 칸: 할 일 */}
+        <div className="home-col">
+          <section className="glass tile clickable" onClick={() => onNavigate('todos')}>
+            <p className="tile-label">할 일 현황</p>
+            {statusTotal === 0 ? (
+              <small className="tile-foot">아직 할 일이 없어요.</small>
+            ) : (
+              <div className="chart-row">
+                <Donut slices={statusSlices} center={String(statusTotal)} />
+                <Legend items={statusSlices} />
               </div>
-            ))}
-          </div>
-          <small className="tile-foot">최근 7일 지출 · {categories[0] ? `가장 많은 곳 ${categories[0][0]}` : '지출 없음'}</small>
-        </section>
+            )}
+          </section>
 
-        <section className="glass tile clickable" onClick={() => onNavigate('ledger')}>
-          <p className="tile-label">이번 달 카테고리별 사용률</p>
-          {catSlices.length === 0 ? (
-            <small className="tile-foot">이번 달 지출 기록이 없어요.</small>
-          ) : (
-            <div className="chart-row">
-              <Donut slices={catSlices} center="지출" />
-              <Legend items={catLegend} />
+          <section className="glass tile clickable" onClick={() => onNavigate('todos')}>
+            <p className="tile-label">할 일 리스트</p>
+            <div className="week-counts">
+              <span>오늘 <b>{todayTodos.length}</b></span>
+              <span>내일 <b>{tomorrowTodos.length}</b></span>
+              <span>이번 주 <b>{weekTodos.length}</b></span>
             </div>
-          )}
-        </section>
+            {openTodos.length === 0 ? (
+              <small className="tile-foot">남은 할 일이 없어요 🎉</small>
+            ) : (
+              <ul className="tile-list todo-scroll">
+                {openTodos.map((t) => {
+                  const date = t.dueAt?.slice(0, 10);
+                  const overdue = t.dueAt && new Date(t.dueAt).getTime() < now;
+                  return (
+                    <li key={t.id}>
+                      <span>
+                        {date && <em className="when-tag">{whenLabel(date)}</em>}
+                        {t.title}
+                      </span>
+                      {t.dueAt && <small className={overdue ? 'overdue' : ''}>{formatDateTime(t.dueAt)}</small>}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        </div>
 
-        <section className="glass tile clickable" onClick={() => onNavigate('todos')}>
-          <p className="tile-label">할 일</p>
-          <div className="week-counts">
-            <span>오늘 <b>{todayTodos.length}</b></span>
-            <span>내일 <b>{tomorrowTodos.length}</b></span>
-            <span>이번 주 <b>{weekTodos.length}</b></span>
-          </div>
-          {todayTodos.length + tomorrowTodos.length + weekTodos.length === 0 ? (
-            <small className="tile-foot">가까운 마감 할 일이 없어요 🎉</small>
-          ) : (
-            <ul className="tile-list">
-              {[...todayTodos, ...tomorrowTodos, ...weekTodos].slice(0, 4).map((t) => {
-                const overdue = new Date(t.dueAt).getTime() < now;
-                return (
-                  <li key={t.id}>
-                    <span>
-                      <em className="when-tag">{whenLabel(t.date)}</em>
-                      {t.title}
-                    </span>
-                    <small className={overdue ? 'overdue' : ''}>{formatDateTime(t.dueAt)}</small>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
+        {/* 세 번째 칸: 일기 / 기분 */}
+        <div className="home-col">
+          <section className="glass tile clickable" onClick={() => onNavigate('journal')}>
+            <p className="tile-label">오늘의 일기</p>
+            {todayEntry ? (
+              <>
+                <div className="mood-big">{moodEmoji(todayEntry.mood) || '📝'}</div>
+                <small className="tile-foot tile-text">{todayEntry.content.slice(0, 80) || '(내용 없음)'}</small>
+              </>
+            ) : (
+              <>
+                <div className="mood-big">✎</div>
+                <small className="tile-foot">아직 작성하지 않았어요</small>
+              </>
+            )}
+          </section>
 
-        <section className="glass tile clickable" onClick={() => onNavigate('todos')}>
-          <p className="tile-label">할 일 현황</p>
-          {statusTotal === 0 ? (
-            <small className="tile-foot">아직 할 일이 없어요.</small>
-          ) : (
-            <div className="chart-row">
-              <Donut slices={statusSlices} center={String(statusTotal)} />
-              <Legend items={statusSlices} />
-            </div>
-          )}
-        </section>
+          <section className="glass tile clickable" onClick={() => onNavigate('journal')}>
+            <p className="tile-label">이번 달 기분</p>
+            {moodTotal === 0 ? (
+              <small className="tile-foot">이번 달 기분 기록이 없어요.</small>
+            ) : (
+              <div className="chart-row">
+                <Donut slices={moodSlices} center={String(moodTotal)} />
+                <Legend items={moodSlices.map((m) => ({ ...m, value: m.value }))} />
+              </div>
+            )}
+          </section>
 
-        <section className="glass tile clickable" onClick={() => onNavigate('journal')}>
-          <p className="tile-label">오늘의 일기</p>
-          {todayEntry ? (
-            <>
-              <div className="mood-big">{moodEmoji(todayEntry.mood) || '📝'}</div>
-              <small className="tile-foot tile-text">{todayEntry.content.slice(0, 80) || '(내용 없음)'}</small>
-            </>
-          ) : (
-            <>
-              <div className="mood-big">✎</div>
-              <small className="tile-foot">아직 작성하지 않았어요</small>
-            </>
-          )}
-        </section>
-
-        <section className="glass tile clickable" onClick={() => onNavigate('journal')}>
-          <p className="tile-label">이번 달 기분</p>
-          {moodTotal === 0 ? (
-            <small className="tile-foot">이번 달 기분 기록이 없어요.</small>
-          ) : (
-            <div className="chart-row">
-              <Donut slices={moodSlices} center={String(moodTotal)} />
-              <Legend items={moodSlices.map((m) => ({ ...m, value: m.value }))} />
-            </div>
-          )}
-        </section>
+          <section className="glass tile clickable" onClick={() => onNavigate('lists')}>
+            <p className="tile-label">리스트</p>
+            {lists.rows.length === 0 ? (
+              <small className="tile-foot">아직 리스트가 없어요.</small>
+            ) : (
+              <ul className="tile-list">
+                {lists.rows.slice(0, 4).map((l) => {
+                  const left = listItems.rows.filter((i) => i.listId === l.id && !i.done).length;
+                  return (
+                    <li key={l.id}>
+                      <span>{l.name}</span>
+                      <small>남은 {left}개</small>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        </div>
       </div>
+
+      {/* 휴대폰: 관리 버튼은 맨 아래 */}
+      <div className="home-manage-bottom">
+        <button onClick={() => setDataOpen(true)} className="home-manage-btn">관리</button>
+      </div>
+
+      {dataOpen && <DataManager onClose={() => setDataOpen(false)} />}
     </div>
   );
 }

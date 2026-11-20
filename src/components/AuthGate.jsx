@@ -61,10 +61,20 @@ export default function AuthGate({ children }) {
   useEffect(() => {
     if (!supabase) return;
     let alive = true;
+    // 무슨 이유로든 20초가 넘도록 "불러오는 중"이면 멈추지 않도록 로그인 화면으로 보냅니다.
+    const watchdog = setTimeout(() => {
+      if (alive) setPhase((p) => (p === 'checking' ? 'login' : p));
+    }, 20000);
     (async () => {
-      const { data } = await supabase.auth.getSession();
+      // 네트워크가 막혀 있으면 세션 확인도 멈출 수 있어서, 8초 뒤에는 기다리지 않고 넘어갑니다.
+      const TIMED_OUT = Symbol();
+      const res = await Promise.race([
+        supabase.auth.getSession(),
+        new Promise((resolve) => setTimeout(() => resolve(TIMED_OUT), 8000)),
+      ]);
       if (!alive) return;
-      if (data?.session) {
+      const session = res === TIMED_OUT ? null : res.data?.session;
+      if (session) {
         await syncOrAlert();
         if (alive) setPhase('ready');
       } else if (!navigator.onLine && hasLocalData()) {
@@ -75,6 +85,7 @@ export default function AuthGate({ children }) {
     })();
     return () => {
       alive = false;
+      clearTimeout(watchdog);
     };
   }, []);
 

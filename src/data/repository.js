@@ -14,6 +14,8 @@ const PUSHED_KEY = PREFIX + 'sync:pushed';
 const TABLE = 'life_dashboard_records';
 const PAGE = 1000;
 const BATCH = 500;
+// 서버 응답이 이 시간을 넘으면 동기화를 포기합니다. 멈춘 요청 때문에 다음 동기화가 막히지 않게 하려고요.
+const SYNC_TIMEOUT_MS = 15000;
 const newId = () => crypto.randomUUID();
 
 // 동기화가 끝나면 이 이벤트를 보내서 화면이 다시 읽도록 합니다.
@@ -97,7 +99,15 @@ export class CloudRepository extends LocalRepository {
   // 같은 시점에 여러 번 불러도 한 번만 실행됩니다.
   sync() {
     if (!this.syncing) {
-      this.syncing = this.#doSync().finally(() => {
+      let timer;
+      const timeout = new Promise((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error('서버 응답이 늦어요. 인터넷 연결이나 회사 네트워크 설정을 확인해 주세요.')),
+          SYNC_TIMEOUT_MS,
+        );
+      });
+      this.syncing = Promise.race([this.#doSync(), timeout]).finally(() => {
+        clearTimeout(timer);
         this.syncing = null;
       });
     }

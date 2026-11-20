@@ -181,4 +181,29 @@
   .manage-form {
     grid-template-columns: 1fr;
   }
+  /* 관리 탭(결제수단/카테고리/할인한도/고정지출/일괄추가)은 한 줄에 가로로 나란히, 글자는 줄바꿈 없이 */
+  /* 목록 한 줄: 이름이 자리를 차지하고, 수정/삭제 버튼은 필요한 만큼만 */
+  .manage-row .list-right {
+    flex: none;
+    margin-left: auto;
+    white-space: nowrap;
+  }
+  .manage-row .grow {
+    flex: 1 1 120px;
+    min-width: 0;
+  }
+  /* 탭이 화면보다 많으면 손가락으로 옆으로 밀어서 봅니다 */
+  .segmented.manage-tabs {
+    display: flex;
+    width: 100%;
+    box-sizing: border-box;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .segmented.manage-tabs button {
+    flex: 0 0 auto;
+    padding: 8px 12px;
+    font-size: 14px;
+    white-space: nowrap;
+  }
 }

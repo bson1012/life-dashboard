@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Dashboard from './components/Dashboard';
 import Ledger from './components/Ledger';
 import Todos from './components/Todos';
@@ -11,19 +11,27 @@ import './App.css';
 
 
 const hasNotification = typeof Notification !== 'undefined';
+const PAGE_LABELS = Object.values(PAGES).map((p) => p.label);
 
 export default function App() {
   // 현재 페이지는 주소 경로와 맞춰 둡니다. 알 수 없는 경로는 Home으로 보냅니다.
   const [tab, setTabState] = useState(() => pageFromPath(window.location.pathname) ?? 'home');
   const [alerts, setAlerts] = useState([]);
-  const [navOpen, setNavOpen] = useState(false); // 휴대폰 하단 메뉴: 평소엔 숨기고 위로 밀면 나옵니다
-  const navDrag = useRef(null);
+  const [menuOpen, setMenuOpen] = useState(false); // 휴대폰: 페이지 제목을 누르면 나오는 이동 메뉴
   const [perm, setPerm] = useState(hasNotification ? Notification.permission : 'unsupported');
 
   function setTab(id) {
     const url = toUrl(PAGES[id].path);
     if (window.location.pathname !== url) window.history.pushState({}, '', url);
     setTabState(id);
+  }
+
+  // 휴대폰에서 페이지 제목(h2)을 누르면 이동 메뉴를 엽니다.
+  function onMainClick(e) {
+    const h = e.target.closest?.('h2');
+    if (!h || !PAGE_LABELS.includes(h.textContent)) return;
+    if (!window.matchMedia('(max-width: 760px)').matches) return;
+    setMenuOpen(true);
   }
 
   // 브라우저 뒤로/앞으로 가기 때 주소에 맞는 페이지를 보여 줍니다.
@@ -85,7 +93,7 @@ export default function App() {
         </div>
       </aside>
 
-      <main className={`main ${tab === 'home' ? 'main-home' : ''}`}>
+      <main className={`main ${tab === 'home' ? 'main-home' : ''}`} onClick={onMainClick}>
         {tab === 'home' && <Dashboard onNavigate={setTab} />}
         {tab === 'ledger' && <Ledger />}
         {tab === 'todos' && <Todos />}
@@ -93,49 +101,28 @@ export default function App() {
         {tab === 'lists' && <Lists />}
       </main>
 
-      <nav
-        className={`tabbar ${navOpen ? 'open' : ''}`}
-        aria-label="페이지 메뉴"
-      >
-        {/* 손잡이: 누르거나 위로 밀면 메뉴가 올라옵니다 */}
-        <button
-          type="button"
-          className="tabbar-handle"
-          aria-label={navOpen ? '메뉴 접기' : '메뉴 열기'}
-          aria-expanded={navOpen}
-          onClick={() => setNavOpen((o) => !o)}
-          onTouchStart={(e) => {
-            navDrag.current = e.touches[0].clientY;
-          }}
-          onTouchEnd={(e) => {
-            const start = navDrag.current;
-            navDrag.current = null;
-            if (start == null) return;
-            const dy = e.changedTouches[0].clientY - start;
-            if (dy < -30) setNavOpen(true);
-            if (dy > 30) setNavOpen(false);
-          }}
-        >
-          <span />
-        </button>
-        <div className="tabbar-items">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              className={tab === t.id ? 'active' : ''}
-              aria-label={t.label}
-              title={t.label}
-              onClick={() => {
-                setTab(t.id);
-                setNavOpen(false);
-              }}
-            >
-              <img className="nav-icon" src={t.icon} alt="" />
-              <span className="tab-label">{t.label}</span>
-            </button>
-          ))}
+      {menuOpen && (
+        <div className="page-menu-backdrop" onClick={() => setMenuOpen(false)}>
+          <nav className="page-menu" aria-label="페이지 이동" onClick={(e) => e.stopPropagation()}>
+            <span className="page-menu-handle" aria-hidden="true" />
+            <p className="page-menu-title">페이지 이동</p>
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                className={tab === t.id ? 'active' : ''}
+                onClick={() => {
+                  setTab(t.id);
+                  setMenuOpen(false);
+                }}
+              >
+                <img className="nav-icon" src={t.icon} alt="" />
+                <span className="page-menu-label">{t.label}</span>
+                {tab === t.id && <span className="page-menu-check" aria-hidden="true">✓</span>}
+              </button>
+            ))}
+          </nav>
         </div>
-      </nav>
+      )}
 
       <div className="toasts">
         {alerts.map((a) => (
