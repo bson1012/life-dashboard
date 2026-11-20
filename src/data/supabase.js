@@ -2,6 +2,8 @@
 import { createClient } from '@supabase/supabase-js';
 
 const url = import.meta.env.VITE_SUPABASE_URL;
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// Supabase 가 새로 만든 키 이름(publishable)과 예전 이름(anon) 중 있는 쪽을 씁니다.
+// 빈 문자열("")도 없는 것으로 봐야 해서 ?? 가 아니라 || 를 씁니다. (GitHub Secrets 가 없으면 빈 값으로 들어옵니다)
+const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 export const supabase = url && anonKey ? createClient(url, anonKey) : null;

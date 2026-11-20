@@ -24,6 +24,16 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Supabase 값이 없으면 로그인 없이 이 기기에서만 도는 빌드가 되므로, 아예 실패시켜서 바로 알 수 있게 합니다.
+      - name: Supabase 설정 확인
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
+            echo "::error::Secrets 에 VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY 가 없습니다. 저장소 Settings > Secrets and variables > Actions 에서 추가하세요."
+            exit 1
+          fi
       # Supabase 값은 저장소 Secrets 에서 가져와 빌드에 넣습니다. 저장소 파일에는 들어가지 않습니다.
       - run: npm run build
         env:
