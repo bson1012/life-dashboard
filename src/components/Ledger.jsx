@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import MoneyInput from './MoneyInput';
-import { useCollection } from '../data/useCollection';
-import { ensureMoneySeed } from '../data/moneySeed';
+import { benefitsOf, rateText } from '../config/cardBenefits';
+import { subsOf, treeNames } from '../config/ledgerCategories';
 import { PAGES } from '../config/pages';
 import { accountsFor, paymentsFor, sortByKind } from '../config/payments';
-import { subsOf, treeNames } from '../config/ledgerCategories';
+import { ensureMoneySeed } from '../data/moneySeed';
+import { useCollection } from '../data/useCollection';
+import { categoryColor } from '../utils/categoryColor';
+import { benefitLeft, limitFor, recordFor, remainingLimit } from '../utils/discount';
+import { formatMonthLabel, formatWon, monthStr, shiftMonth, todayStr } from '../utils/format';
 import {
   actualOf,
   billedOf,
@@ -17,17 +20,14 @@ import {
   supportOf,
 } from '../utils/ledger';
 import { isCounted, perfOf } from '../utils/performance';
-import { benefitsOf, limitsOf, rateText } from '../config/cardBenefits';
-import { benefitDiscount, benefitLeft, limitFor, recordFor, remainingLimit } from '../utils/discount';
-import { formatMonthLabel, formatWon, monthStr, shiftMonth, todayStr } from '../utils/format';
+import AmountExtras from './AmountExtras';
+import CategoryPie from './CategoryPie';
 import ManageMoney, { FIXED_KIND_LABEL } from './ManageMoney';
+import MoneyInput from './MoneyInput';
+import PaymentFilter from './PaymentFilter';
 import PaymentPicker from './PaymentPicker';
 import PerformancePanel from './PerformancePanel';
 import TransactionEdit from './TransactionEdit';
-import AmountExtras from './AmountExtras';
-import CategoryPie from './CategoryPie';
-import { categoryColor } from '../utils/categoryColor';
-import PaymentFilter from './PaymentFilter';
 
 // 실적(카드 실적 조건)은 신용카드·체크카드에만 있습니다. 통장·현금·포인트에는 실적 칩을 보이지 않습니다.
 import './Ledger.css';
@@ -235,22 +235,18 @@ export default function Ledger() {
   const leftBenefit = pickedBenefit
     ? benefitLeft({ rows, month: formMonth, paymentId, cap, benefit: pickedBenefit })
     : null;
-  const autoDiscount =
-    isExpense && pickedBenefit
-      ? benefitDiscount({
-          rows,
-          month: formMonth,
-          paymentId,
-          limit: monthLimit,
-          cap,
-          benefit: pickedBenefit,
-          amount: approvedN,
-        })
-      : 0;
+  const requestedDiscount = discountWon(
+    approvedN,
+    form.discountMode,
+    num(form.discountValue),
+  );
+
+  // 혜택 분야를 선택한 경우에도 실제 입력한 할인값을 사용합니다.
+  // 단, 통합 한도와 분야별 한도를 초과할 수 없습니다.
   const discountN = isExpense
     ? pickedBenefit
-      ? autoDiscount
-      : discountWon(approvedN, form.discountMode, num(form.discountValue))
+      ? Math.min(requestedDiscount, leftLimit, leftBenefit ?? Infinity)
+      : requestedDiscount
     : 0;
   const supportN = isExpense ? num(form.support) : 0;
   const billedN = approvedN - discountN;
@@ -333,8 +329,8 @@ export default function Ledger() {
     };
     if (isExpense) {
       record.cardDiscount = discountN;
-      record.discountMode = pickedBenefit ? 'benefit' : form.discountMode;
-      record.discountValue = pickedBenefit ? pickedBenefit.rate : num(form.discountValue);
+      record.discountMode = form.discountMode;
+      record.discountValue = num(form.discountValue);
       record.benefit = pickedBenefit?.key ?? '';
       record.support = supportN;
       record.deductible = form.deductible;
@@ -403,8 +399,12 @@ export default function Ledger() {
     const won = cardDiscountOf(r);
     if (!won) return '';
     const bn = benefitsOf(paymentById[r.paymentId]).find((b) => b.key === r.benefit);
+    const enteredValue = r.discountMode === 'rate'
+      ? (r.discountValue ? `${r.discountValue}%` : '')
+      : (Number(r.discountValue) > 0 ? formatWon(Number(r.discountValue)) : '');
+
     const rate = bn
-      ? ` (${bn.label} ${rateText(bn)})`
+      ? ` (${bn.label} ${enteredValue || rateText(bn)})`
       : r.discountMode === 'rate' && r.discountValue
         ? ` (${r.discountValue}%)`
         : '';
@@ -439,7 +439,7 @@ export default function Ledger() {
     const isIncome = r.type === 'income';
     const orig = isCancel ? rowById[r.refId] : null;
     const pay = paymentById[r.paymentId];
-    const left =r.type === 'expense' ? remainingOf(rows, r) : null;
+    const left = r.type === 'expense' ? remainingOf(rows, r) : null;
     const cancelled = r.type === 'expense' ? cancelledOf(rows, r.id) : 0;
     const sup = supportOf(r);
     const payText = paymentLabelOf(r, paymentById);
@@ -464,32 +464,32 @@ export default function Ledger() {
           </div>
           <div className="money-pay">
             {!isIncome && !isCancel && (
-    <span className="flag-row inline">
-      {perfOf(pay) && isCounted(r, pay) && (
-        <button
-          className="flag-chip on"
-          onClick={() => update(r.id, { counts: !isCounted(r, pay) })}
-        >
-          실적
-        </button>
-      )}
-      {isDeductible(r) && (
-        <button className="flag-chip on" onClick={() => update(r.id, { deductible: false })}>
-          공제
-        </button>
-      )}
-      {r.personal && (
-        <button className="flag-chip on" onClick={() => update(r.id, { personal: false })}>
-          보연 개인
-        </button>
-      )}
-      {r.company && (
-        <button className="flag-chip on" onClick={() => update(r.id, { company: false })}>
-          회사 비용
-        </button>
-      )}
-    </span>
-  )}
+              <span className="flag-row inline">
+                {perfOf(pay) && isCounted(r, pay) && (
+                  <button
+                    className="flag-chip on"
+                    onClick={() => update(r.id, { counts: !isCounted(r, pay) })}
+                  >
+                    실적
+                  </button>
+                )}
+                {isDeductible(r) && (
+                  <button className="flag-chip on" onClick={() => update(r.id, { deductible: false })}>
+                    공제
+                  </button>
+                )}
+                {r.personal && (
+                  <button className="flag-chip on" onClick={() => update(r.id, { personal: false })}>
+                    보연 개인
+                  </button>
+                )}
+                {r.company && (
+                  <button className="flag-chip on" onClick={() => update(r.id, { company: false })}>
+                    회사 비용
+                  </button>
+                )}
+              </span>
+            )}
             {payText && <span className="memo">{payText}</span>}
             {cancelled > 0 && (
               <span className="memo cancel-status">
@@ -667,81 +667,81 @@ export default function Ledger() {
             </>
           ) : (
             <>
-            <div className="task-row">
-              <MoneyInput
-                className="title-input money-amount"
-                placeholder="승인 금액"
-                value={form.amount}
-                onChange={(v) => setForm({ ...form, amount: v })}
-              />
-              <PaymentPicker
-                options={choices}
-                value={paymentId}
-                onChange={(id) => setForm({ ...form, paymentId: id, receipt: false, benefit: '' })}
-              />
-            </div>
-            <div className="task-row">
-              <input
-                className="title-input"
-                placeholder="사용처"
-                value={form.merchant}
-                onChange={(e) => setForm({ ...form, merchant: e.target.value })}
-              />
-              <input
-                className="title-input"
-                placeholder="내용 (선택)"
-                value={form.memo}
-                onChange={(e) => setForm({ ...form, memo: e.target.value })}
-              />
-            </div>
-            <div className="task-row">
-              <select
-                className="title-input"
-                value={category}
-                onChange={(e) => changeCategory(e.target.value)}
-                aria-label="대분류"
-              >
-                {treeNames(tree).map((c) => (
-                  <option key={c}>{c}</option>
-                ))}
-              </select>
-              <select
-                className="title-input"
-                value={sub}
-                onChange={(e) => setForm({ ...form, sub: e.target.value })}
-                aria-label="소분류"
-                disabled={subs.length === 0}
-              >
-                {subs.map((s) => (
-                  <option key={s}>{s}</option>
-                ))}
-              </select>
-            </div>
-            {/* 요약 줄은 금액이 없어도 자리를 항상 차지해서, 입력할 때 칸 크기가 바뀌지 않게 합니다. */}
-            <div className="money-summary">
-              {isExpense && approvedN > 0 && (
-                <>
-                  <span>실제 사용 <b>{formatWon(actualN)}</b></span>
-                  {discountN > 0 && <span>청구 <b>{formatWon(billedN)}</b></span>}
-                </>
+              <div className="task-row">
+                <MoneyInput
+                  className="title-input money-amount"
+                  placeholder="승인 금액"
+                  value={form.amount}
+                  onChange={(v) => setForm({ ...form, amount: v })}
+                />
+                <PaymentPicker
+                  options={choices}
+                  value={paymentId}
+                  onChange={(id) => setForm({ ...form, paymentId: id, receipt: false, benefit: '' })}
+                />
+              </div>
+              <div className="task-row">
+                <input
+                  className="title-input"
+                  placeholder="사용처"
+                  value={form.merchant}
+                  onChange={(e) => setForm({ ...form, merchant: e.target.value })}
+                />
+                <input
+                  className="title-input"
+                  placeholder="내용 (선택)"
+                  value={form.memo}
+                  onChange={(e) => setForm({ ...form, memo: e.target.value })}
+                />
+              </div>
+              <div className="task-row">
+                <select
+                  className="title-input"
+                  value={category}
+                  onChange={(e) => changeCategory(e.target.value)}
+                  aria-label="대분류"
+                >
+                  {treeNames(tree).map((c) => (
+                    <option key={c}>{c}</option>
+                  ))}
+                </select>
+                <select
+                  className="title-input"
+                  value={sub}
+                  onChange={(e) => setForm({ ...form, sub: e.target.value })}
+                  aria-label="소분류"
+                  disabled={subs.length === 0}
+                >
+                  {subs.map((s) => (
+                    <option key={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+              {/* 요약 줄은 금액이 없어도 자리를 항상 차지해서, 입력할 때 칸 크기가 바뀌지 않게 합니다. */}
+              <div className="money-summary">
+                {isExpense && approvedN > 0 && (
+                  <>
+                    <span>실제 사용 <b>{formatWon(actualN)}</b></span>
+                    {discountN > 0 && <span>청구 <b>{formatWon(billedN)}</b></span>}
+                  </>
+                )}
+              </div>
+
+              {isExpense && (
+                <AmountExtras
+                  form={{ ...form, counts, receipt: form.receipt }}
+                  setForm={setForm}
+                  showDiscount
+                  showCounts={perfOf(selectedPayment)}
+                  showReceipt={selectedPayment?.kind === 'cash'}
+                  benefits={benefits}
+                  monthLimit={monthLimit}
+                  leftLimit={leftLimit}
+                  leftBenefit={leftBenefit}
+                  discountN={discountN}
+                />
               )}
-            </div>
-  
-            {isExpense && (
-              <AmountExtras
-                form={{ ...form, counts, receipt: form.receipt }}
-                setForm={setForm}
-                showDiscount
-                showCounts={perfOf(selectedPayment)}
-                showReceipt={selectedPayment?.kind === 'cash'}
-                benefits={benefits}
-                monthLimit={monthLimit}
-                leftLimit={leftLimit}
-                leftBenefit={leftBenefit}
-                autoDiscount={autoDiscount}
-              />
-            )}
-  
+
             </>
           )}
         </form>
@@ -749,150 +749,150 @@ export default function Ledger() {
 
       <div className="money-wide">
         <div className="money-main-col">
-      {/* 내역: 수입과 지출 전체를 한 목록으로 보고, 칩으로 구분만 골라 봅니다. 입력창 바로 아래에 둡니다. */}
-      <div className="card">
-        <div className="row-between" style={{ marginTop: 0 }}>
-          <h3 style={{ margin: 0 }}>내역</h3>
-          <div className="chip-bar">
-            <button
-              className={`chip ${typeFilters.length === 0 ? 'active' : ''}`}
-              onClick={() => setTypeFilters([])}
-            >
-              전체
-            </button>
-            {LIST_FILTERS.map((f) => (
-              <button
-                key={f.v}
-                className={`chip ${typeFilters.includes(f.v) ? 'active' : ''}`}
-                aria-pressed={typeFilters.includes(f.v)}
-                onClick={() => toggleType(f.v)}
+          {/* 내역: 수입과 지출 전체를 한 목록으로 보고, 칩으로 구분만 골라 봅니다. 입력창 바로 아래에 둡니다. */}
+          <div className="card">
+            <div className="row-between" style={{ marginTop: 0 }}>
+              <h3 style={{ margin: 0 }}>내역</h3>
+              <div className="chip-bar">
+                <button
+                  className={`chip ${typeFilters.length === 0 ? 'active' : ''}`}
+                  onClick={() => setTypeFilters([])}
+                >
+                  전체
+                </button>
+                {LIST_FILTERS.map((f) => (
+                  <button
+                    key={f.v}
+                    className={`chip ${typeFilters.includes(f.v) ? 'active' : ''}`}
+                    aria-pressed={typeFilters.includes(f.v)}
+                    onClick={() => toggleType(f.v)}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+                <PaymentFilter
+                  value={payFilter}
+                  options={payments.map((p) => ({ id: p.id, name: p.name }))}
+                  onChange={setPayFilter}
+                />
+                <input
+                  type="search"
+                  placeholder="검색: 사용처, 내용, 분류, 결제수단, 금액"
+                  aria-label="내역 검색"
+                  value={keyword}
+                  onChange={(e) => setKeyword(e.target.value)}
+                  style={{
+                    width: 220,
+                    maxWidth: '100%',
+                    boxSizing: 'border-box',
+                    margin: 0,
+                    padding: '7px 14px',
+                    border: '1px solid var(--line)',
+                    borderRadius: 999,
+                    background: 'var(--bg)',
+                    color: 'inherit',
+                    fontFamily: 'inherit',
+                    fontSize: 14,
+                    outline: 'none',
+                  }}
+                />
+              </div>
+            </div>
+            {!ready ? null : searchedRows.length === 0 ? (
+              <p className="muted">{kw ? '검색 결과가 없어요.' : '표시할 내역이 없어요.'}</p>
+            ) : (
+              <ul className="list">{searchedRows.map(renderRow)}</ul>
+            )}
+            {ready && isFiltering && searchedRows.length > 0 && (
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: '6px 16px',
+                  justifyContent: 'flex-end',
+                  marginTop: 12,
+                  paddingTop: 10,
+                  borderTop: '1px solid var(--line)',
+                  fontSize: 14,
+                }}
               >
-                {f.label}
-              </button>
-            ))}
-            <PaymentFilter
-              value={payFilter}
-              options={payments.map((p) => ({ id: p.id, name: p.name }))}
-              onChange={setPayFilter}
-            />
-            <input
-              type="search"
-              placeholder="검색: 사용처, 내용, 분류, 결제수단, 금액"
-              aria-label="내역 검색"
-              value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
-              style={{
-                width: 220,
-                maxWidth: '100%',
-                boxSizing: 'border-box',
-                margin: 0,
-                padding: '7px 14px',
-                border: '1px solid var(--line)',
-                borderRadius: 999,
-                background: 'var(--bg)',
-                color: 'inherit',
-                fontFamily: 'inherit',
-                fontSize: 14,
-                outline: 'none',
-              }}
-            />
+                <span className="muted">{searchedRows.length}건</span>
+                <span>수입 <b>{formatWon(filteredIncome)}</b></span>
+                <span>지출 <b>{formatWon(filteredSpend)}</b></span>
+                {filteredTransfer > 0 && <span>이동 ⇄ <b>{formatWon(filteredTransfer)}</b></span>}
+                <span>합계 <b>{formatWon(filteredNet)}</b></span>
+              </div>
+            )}
           </div>
-        </div>
-        {!ready ? null : searchedRows.length === 0 ? (
-          <p className="muted">{kw ? '검색 결과가 없어요.' : '표시할 내역이 없어요.'}</p>
-        ) : (
-          <ul className="list">{searchedRows.map(renderRow)}</ul>
-        )}
-        {ready && isFiltering && searchedRows.length > 0 && (
-          <div
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '6px 16px',
-              justifyContent: 'flex-end',
-              marginTop: 12,
-              paddingTop: 10,
-              borderTop: '1px solid var(--line)',
-              fontSize: 14,
-            }}
-          >
-            <span className="muted">{searchedRows.length}건</span>
-            <span>수입 <b>{formatWon(filteredIncome)}</b></span>
-            <span>지출 <b>{formatWon(filteredSpend)}</b></span>
-            {filteredTransfer > 0 && <span>이동 ⇄ <b>{formatWon(filteredTransfer)}</b></span>}
-            <span>합계 <b>{formatWon(filteredNet)}</b></span>
-          </div>
-        )}
-      </div>
 
-      {/* 고정 지출: 매달 같은 항목이 보이도록 관리 > 고정 지출에 한 번만 입력합니다. 거래 합계에는 넣지 않습니다. */}
-      <div className="card">
-        <div className="row-between" style={{ marginTop: 0 }}>
-          <h3 style={{ margin: 0 }}>고정 항목</h3>
-          <small className="muted">
-            매달 지출 {formatWon(fixedTotalOf('expense'))} · 수입 {formatWon(fixedTotalOf('income'))} · 이동 {formatWon(fixedTotalOf('transfer'))}
-          </small>
-        </div>
-        {fixedRows.length === 0 ? (
-          <p className="muted">등록된 고정 지출이 없어요.</p>
-        ) : (
-          <ul className="fixed-list">
-            {fixedRows.map((f) => (
-              <li key={f.id} className="fixed-row">
-                <span>
-                  <span className="tag category-tag" style={{ marginRight: 6 }}>{FIXED_KIND_LABEL[f.kind ?? 'expense']}</span>
-                  {f.name}
-                  {f.day ? <small className="muted"> · 매달 {f.day}일</small> : null}
-                  {paymentById[f.paymentId] ? <small className="muted"> · {paymentById[f.paymentId].name}</small> : null}
-                </span>
-                <b>{formatWon(f.amount)}</b>
-              </li>
-            ))}
-          </ul>
-        )}
-        <div style={{ marginTop: 8 }}>
-          <button
-            type="button"
-            className="link-btn"
-            onClick={() => {
-              setManageTab('fixed');
-              setManageOpen(true);
-            }}
-          >
-            고정 항목 관리
-          </button>
-        </div>
-      </div>
+          {/* 고정 지출: 매달 같은 항목이 보이도록 관리 > 고정 지출에 한 번만 입력합니다. 거래 합계에는 넣지 않습니다. */}
+          <div className="card">
+            <div className="row-between" style={{ marginTop: 0 }}>
+              <h3 style={{ margin: 0 }}>고정 항목</h3>
+              <small className="muted">
+                매달 지출 {formatWon(fixedTotalOf('expense'))} · 수입 {formatWon(fixedTotalOf('income'))} · 이동 {formatWon(fixedTotalOf('transfer'))}
+              </small>
+            </div>
+            {fixedRows.length === 0 ? (
+              <p className="muted">등록된 고정 지출이 없어요.</p>
+            ) : (
+              <ul className="fixed-list">
+                {fixedRows.map((f) => (
+                  <li key={f.id} className="fixed-row">
+                    <span>
+                      <span className="tag category-tag" style={{ marginRight: 6 }}>{FIXED_KIND_LABEL[f.kind ?? 'expense']}</span>
+                      {f.name}
+                      {f.day ? <small className="muted"> · 매달 {f.day}일</small> : null}
+                      {paymentById[f.paymentId] ? <small className="muted"> · {paymentById[f.paymentId].name}</small> : null}
+                    </span>
+                    <b>{formatWon(f.amount)}</b>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div style={{ marginTop: 8 }}>
+              <button
+                type="button"
+                className="link-btn"
+                onClick={() => {
+                  setManageTab('fixed');
+                  setManageOpen(true);
+                }}
+              >
+                고정 항목 관리
+              </button>
+            </div>
+          </div>
 
         </div>
         <div className="money-side-col">
-        {/* 통계: 카테고리별 지출 비율과 구분별 합계 */}
-        <div className="ledger-split">
-          <div className="card split-card">
-            <div className="row-between" style={{ marginTop: 0 }}>
-              <h3 style={{ margin: 0 }}>공용 비용 카테고리</h3>
-              <small className="muted">{formatWon(sumOf(monthShared))}</small>
+          {/* 통계: 카테고리별 지출 비율과 구분별 합계 */}
+          <div className="ledger-split">
+            <div className="card split-card">
+              <div className="row-between" style={{ marginTop: 0 }}>
+                <h3 style={{ margin: 0 }}>공용 비용 카테고리</h3>
+                <small className="muted">{formatWon(sumOf(monthShared))}</small>
+              </div>
+              <CategoryPie items={categoriesOf(monthShared)} />
             </div>
-            <CategoryPie items={categoriesOf(monthShared)} />
-          </div>
-          <div className="card split-card">
-            <div className="row-between" style={{ marginTop: 0 }}>
-              <h3 style={{ margin: 0 }}>보연 개인 카테고리</h3>
-              <small className="muted">{formatWon(sumOf(monthPersonal))}</small>
+            <div className="card split-card">
+              <div className="row-between" style={{ marginTop: 0 }}>
+                <h3 style={{ margin: 0 }}>보연 개인 카테고리</h3>
+                <small className="muted">{formatWon(sumOf(monthPersonal))}</small>
+              </div>
+              <CategoryPie items={categoriesOf(monthPersonal)} />
             </div>
-            <CategoryPie items={categoriesOf(monthPersonal)} />
+            <div className="card split-card">
+              <h3 style={{ marginTop: 0 }}>구분별 합계</h3>
+              <dl className="totals">
+                <div><dt>수입</dt><dd>{formatWon(sumOf(incomeRows))}</dd></div>
+                <div><dt>지출 (보연 개인 제외)</dt><dd>{formatWon(sumOf(sharedRows))}</dd></div>
+                <div><dt>보연 개인 지출</dt><dd>{formatWon(sumOf(personalRows))}</dd></div>
+                <div><dt>회사 비용 (청구 기준)</dt><dd>{formatWon(billedSum(monthCompany))}</dd></div>
+                <div><dt>이동</dt><dd>{formatWon(sumOf(transferRows))}</dd></div>
+              </dl>
+            </div>
           </div>
-          <div className="card split-card">
-            <h3 style={{ marginTop: 0 }}>구분별 합계</h3>
-            <dl className="totals">
-              <div><dt>수입</dt><dd>{formatWon(sumOf(incomeRows))}</dd></div>
-              <div><dt>지출 (보연 개인 제외)</dt><dd>{formatWon(sumOf(sharedRows))}</dd></div>
-              <div><dt>보연 개인 지출</dt><dd>{formatWon(sumOf(personalRows))}</dd></div>
-              <div><dt>회사 비용 (청구 기준)</dt><dd>{formatWon(billedSum(monthCompany))}</dd></div>
-              <div><dt>이동</dt><dd>{formatWon(sumOf(transferRows))}</dd></div>
-            </dl>
-          </div>
-        </div>
           <PerformancePanel
             rows={rows}
             payments={payments}
@@ -903,7 +903,7 @@ export default function Ledger() {
               setManageOpen(true);
             }}
           />
-          </div>
+        </div>
       </div>
 
 

@@ -1,14 +1,14 @@
 import { useState } from 'react';
-import MoneyInput from './MoneyInput';
-import { accountsFor, paymentsFor } from '../config/payments';
+import { benefitsOf, limitsOf } from '../config/cardBenefits';
 import { subsOf, treeNames } from '../config/ledgerCategories';
+import { accountsFor, paymentsFor } from '../config/payments';
+import { benefitLeft, limitFor, recordFor, remainingLimit } from '../utils/discount';
+import { formatWon } from '../utils/format';
 import { cancelledOf, cardDiscountOf, discountWon, isDeductible, supportOf } from '../utils/ledger';
 import { isCounted, perfOf } from '../utils/performance';
-import { formatWon } from '../utils/format';
-import PaymentPicker from './PaymentPicker';
 import AmountExtras from './AmountExtras';
-import { benefitsOf, limitsOf } from '../config/cardBenefits';
-import { benefitDiscount, benefitLeft, limitFor, recordFor, remainingLimit } from '../utils/discount';
+import MoneyInput from './MoneyInput';
+import PaymentPicker from './PaymentPicker';
 
 const num = (v) => (v === '' || v == null ? 0 : Number(v));
 
@@ -36,8 +36,16 @@ export default function TransactionEdit({ row, rows, trees, payments, limitRows 
   const [form, setForm] = useState(() => {
     const pay = payments.find((p) => p.id === row.paymentId);
     // 예전 거래는 discountMode 가 없으므로 원 금액 할인으로 취급합니다.
-    const mode = row.discountMode ?? 'won';
-    const value = mode === 'rate' ? row.discountValue : cardDiscountOf(row);
+    const initialBenefit = benefitsOf(pay).find((b) => b.key === row.benefit);
+    const mode = row.discountMode === 'benefit'
+      ? (initialBenefit?.unit === 'won' ? 'won' : 'rate')
+      : (row.discountMode ?? 'won');
+
+    const value = row.discountMode === 'benefit'
+      ? (initialBenefit?.rate ?? row.discountValue ?? '')
+      : mode === 'rate'
+        ? row.discountValue
+        : cardDiscountOf(row);
     return {
       type: row.type,
       date: row.date,
@@ -89,23 +97,16 @@ export default function TransactionEdit({ row, rows, trees, payments, limitRows 
   const leftBenefit = pickedBenefit
     ? benefitLeft({ rows, month: formMonth, paymentId, cap, benefit: pickedBenefit, excludeId: row.id })
     : null;
-  const autoDiscount =
-    isExpense && pickedBenefit
-      ? benefitDiscount({
-          rows,
-          month: formMonth,
-          paymentId,
-          limit: monthLimit,
-          cap,
-          benefit: pickedBenefit,
-          amount: approvedN,
-          excludeId: row.id,
-        })
-      : 0;
+  const requestedDiscount = discountWon(
+    approvedN,
+    form.discountMode,
+    num(form.discountValue),
+  );
+
   const discountN = isExpense
     ? pickedBenefit
-      ? autoDiscount
-      : discountWon(approvedN, form.discountMode, num(form.discountValue))
+      ? Math.min(requestedDiscount, leftLimit, leftBenefit ?? Infinity)
+      : requestedDiscount
     : 0;
   const supportN = isExpense ? num(form.support) : 0;
   const actualN = approvedN - discountN - supportN;
@@ -180,8 +181,8 @@ export default function TransactionEdit({ row, rows, trees, payments, limitRows 
     if (isExpense) {
       patch.cardDiscount = discountN;
       if (pickedBenefit && !monthLimit) return window.alert('이번 달 할인 한도를 먼저 골라 주세요.');
-      patch.discountMode = pickedBenefit ? 'benefit' : form.discountMode;
-      patch.discountValue = pickedBenefit ? pickedBenefit.rate : num(form.discountValue);
+      patch.discountMode = form.discountMode;
+      patch.discountValue = num(form.discountValue);
       patch.benefit = pickedBenefit?.key ?? '';
       patch.support = supportN;
       patch.deductible = form.deductible;
@@ -300,7 +301,7 @@ export default function TransactionEdit({ row, rows, trees, payments, limitRows 
                 leftLimit={leftLimit}
                 leftBenefit={leftBenefit}
                 onLimit={(v) => onSetLimit?.(paymentId, formMonth, v)}
-                autoDiscount={autoDiscount}
+                discountN={discountN}
               />
             )}
           </>
