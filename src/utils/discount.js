@@ -1,4 +1,4 @@
-import { cardDiscountOf } from './ledger';
+import { cardDiscountOf, netExpenseOf } from './ledger';
 
 // 혜택 할인 계산: 승인 금액 × 혜택 할인율을 구하고, 이번 달 남은 한도를 넘지 않게 자릅니다.
 // rows: 전체 거래, month: 'YYYY-MM', paymentId: 카드, limit: 이번 달 한도(원, 없으면 0),
@@ -8,14 +8,19 @@ import { cardDiscountOf } from './ledger';
 // excludeId 거래는 세지 않습니다. benefitKey 를 주면 그 혜택 분야의 할인만 셉니다.
 export function usedLimit({ rows, month, paymentId, excludeId, benefitKey }) {
   return rows.reduce((sum, r) => {
-    if (r.id === excludeId || r.paymentId !== paymentId || !r.date.startsWith(month)) return sum;
-    // 취소 거래는 원거래의 혜택 분야를 따라갑니다.
-    const key = r.type === 'cancel' ? (r.benefit ?? rows.find((x) => x.id === r.refId)?.benefit) : r.benefit;
-    if (!key) return sum;
-    if (benefitKey && key !== benefitKey) return sum;
-    if (r.type === 'expense') return sum + cardDiscountOf(r);
-    if (r.type === 'cancel') return sum - cardDiscountOf(r);
-    return sum;
+    if (
+      r.type !== 'expense' ||
+      r.id === excludeId ||
+      r.paymentId !== paymentId ||
+      !r.date.startsWith(month)
+    ) {
+      return sum;
+    }
+
+    if (!r.benefit) return sum;
+    if (benefitKey && r.benefit !== benefitKey) return sum;
+
+    return sum + cardDiscountOf(netExpenseOf(rows, r));
   }, 0);
 }
 

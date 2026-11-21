@@ -6,45 +6,78 @@
 // 거래의 counts 가 false 이면 실적에서 뺍니다. counts 가 없으면 신용·체크카드는 포함, 나머지는 제외합니다.
 // 취소(type: 'cancel')는 취소한 달의 실적·청구·할인에서 뺍니다.
 
-import { billedOf, cardDiscountOf } from './ledger';
+
+import { billedOf, netExpenseOf } from './ledger';
 
 export const TIER_UNIT = 10000;
 
-// 결제수단의 실적 관리 여부. perf 를 명시하지 않은 예전 결제수단은 실적 구간(tiers)이 있으면 관리합니다.
-export const perfOf = (p) => !!p && (p.perf ?? (p.tiers?.length ?? 0) > 0);
+export const perfOf = (p) =>
+  !!p && (p.perf ?? (p.tiers?.length ?? 0) > 0);
 
-// 실적 관리 결제수단의 거래 중 counts 가 false 가 아닌 것만 실적에 셉니다.
 export function isCounted(tx, pay) {
   return perfOf(pay) && (tx.counts ?? true);
 }
 
-
-// 한 달 동안 결제수단별 실적 사용액, 청구액, 할인 사용액과 남은 할인 한도를 계산합니다.
 export function performanceFor(rows, payments, month) {
   const paymentById = Object.fromEntries(payments.map((p) => [p.id, p]));
+  const rowById = Object.fromEntries(rows.map((r) => [r.id, r]));
   const agg = {};
 
+  const getAgg = (paymentId) =>
+    (agg[paymentId] ??= { spent: 0, billed: 0, discount: 0 });
+
+  // 1. 원결제 월 기준: 청구액과 할인액은 취소가 반영된 순액으로 계산
+  // 실적 사용액은 일단 원결제 월에 승인된 금액을 더합니다.
   for (const r of rows) {
-    if ((r.type !== 'expense' && r.type !== 'cancel') || !r.date.startsWith(month)) continue;
+    if (r.type !== 'expense' || !r.date.startsWith(month)) continue;
+
     const p = paymentById[r.paymentId];
     if (!p) continue;
-    const sign = r.type === 'cancel' ? -1 : 1;
-    const a = (agg[p.id] ??= { spent: 0, billed: 0, discount: 0 });
-    a.billed += sign * billedOf(r);
-    a.discount += sign * cardDiscountOf(r);
-    if (isCounted(r, p)) a.spent += sign * r.amount;
+
+    const a = getAgg(p.id);
+    const net = netExpenseOf(rows, r);
+
+    a.billed += billedOf(net);
+    a.discount += net.amount - billedOf(net);
+
+    if (isCounted(r, p)) {
+      a.spent += r.amount;
+    }
+  }
+
+  // 2. 취소 발생 월 기준: 해당 월의 카드 실적에서 취소 승인액만 차감
+  // 원거래의 실적 포함 여부를 기준으로 판단합니다.
+  for (const r of rows) {
+    if (r.type !== 'cancel' || !r.date.startsWith(month)) continue;
+
+    const orig = rowById[r.refId];
+    if (!orig) continue;
+
+    const p = paymentById[orig.paymentId];
+    if (!p || !isCounted(orig, p)) continue;
+
+    const a = getAgg(p.id);
+    a.spent -= r.amount;
   }
 
   return payments
-    .filter((p) => perfOf(p) && (agg[p.id] || (p.tiers?.length ?? 0) > 0 || p.discountLimit > 0))
+    .filter(
+      (p) =>
+        perfOf(p) &&
+        (agg[p.id] || (p.tiers?.length ?? 0) > 0 || p.discountLimit > 0),
+    )
     .map((p) => {
       const a = agg[p.id] ?? { spent: 0, billed: 0, discount: 0 };
       const spent = a.spent;
-      const tiers = [...(p.tiers ?? [])].sort((x, y) => x - y).map((t) => t * TIER_UNIT);
+      const tiers = [...(p.tiers ?? [])]
+        .sort((x, y) => x - y)
+        .map((t) => t * TIER_UNIT);
+
       const achieved = tiers.filter((t) => spent >= t).pop() ?? 0;
       const next = tiers.find((t) => t > spent) ?? null;
       const target = next ?? tiers[tiers.length - 1] ?? null;
       const limit = p.discountLimit ?? 0;
+
       return {
         payment: p,
         spent,

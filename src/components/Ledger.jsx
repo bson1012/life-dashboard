@@ -15,6 +15,7 @@ import {
   cardDiscountOf,
   discountWon,
   isDeductible,
+  netExpenseOf,
   remainingOf,
   summarize,
   supportOf,
@@ -130,17 +131,39 @@ const LIST_FILTERS = [
   { v: 'company', label: '회사 비용' },
 ];
 
-const signedActual = (r) => (r.type === 'income' ? r.amount : r.type === 'cancel' ? -actualOf(r) : actualOf(r));
-const sumOf = (rows) => rows.reduce((s, r) => s + signedActual(r), 0);
+// 취소는 원거래에 이미 반영되므로 월별 합계에서 다시 차감하지 않습니다.
+const signedActual = (r, rows) => {
+  if (r.type === 'cancel') return 0;
+  if (r.type === 'income') return r.amount;
+  if (r.type === 'expense') return actualOf(netExpenseOf(rows, r));
+  return actualOf(r);
+};
 
-// 청구 금액 합계 (취소는 빼고): 카드 청구서에 찍히는 금액 기준입니다.
-const billedSum = (rows) => rows.reduce((s, r) => s + (r.type === 'cancel' ? -1 : 1) * billedOf(r), 0);
+const sumOf = (rows) =>
+  rows.reduce((s, r) => s + signedActual(r, rows), 0);
 
-// 대분류별 실제 사용 금액 (취소는 빼고, 0 이하는 뺍니다). 파이 차트 입력값입니다.
+// 청구 금액도 원결제 월 기준 순액으로 계산합니다.
+const billedSum = (rows) =>
+  rows.reduce(
+    (s, r) =>
+      s + (r.type === 'expense' ? billedOf(netExpenseOf(rows, r)) : 0),
+    0,
+  );
+
+// 카테고리 합계
 function categoriesOf(rows) {
   const byCat = {};
-  for (const r of rows) byCat[r.category] = (byCat[r.category] || 0) + signedActual(r);
-  return Object.entries(byCat).filter(([, amt]) => amt > 0).sort((a, b) => b[1] - a[1]);
+
+  for (const r of rows) {
+    if (r.type !== 'expense') continue;
+
+    const amount = actualOf(netExpenseOf(rows, r));
+    byCat[r.category] = (byCat[r.category] || 0) + amount;
+  }
+
+  return Object.entries(byCat)
+    .filter(([, amt]) => amt > 0)
+    .sort((a, b) => b[1] - a[1]);
 }
 
 export default function Ledger() {
@@ -356,7 +379,42 @@ export default function Ledger() {
       window.alert(`취소 금액은 1원 이상, 남은 금액(${formatWon(left)}) 이하로 입력해 주세요.`);
       return;
     }
-    const ratio = amount / orig.amount;
+    const cancelled = rows.filter(
+      (r) => r.type === 'cancel' && r.refId === orig.id,
+    );
+
+    const alreadyDiscount = cancelled.reduce(
+      (sum, r) => sum + cardDiscountOf(r),
+      0,
+    );
+
+    const alreadySupport = cancelled.reduce(
+      (sum, r) => sum + supportOf(r),
+      0,
+    );
+
+    const remainingDiscount = Math.max(
+      cardDiscountOf(orig) - alreadyDiscount,
+      0,
+    );
+
+    const remainingSupport = Math.max(
+      supportOf(orig) - alreadySupport,
+      0,
+    );
+
+    const ratio = amount / left;
+
+    const cancelDiscount =
+      amount === left
+        ? remainingDiscount
+        : Math.min(remainingDiscount, Math.round(remainingDiscount * ratio));
+
+    const cancelSupport =
+      amount === left
+        ? remainingSupport
+        : Math.min(remainingSupport, Math.round(remainingSupport * ratio));
+
     await add({
       type: 'cancel',
       refId: orig.id,
@@ -364,8 +422,8 @@ export default function Ledger() {
       merchant: orig.merchant ?? '',
       memo: cancelDraft.memo.trim(),
       amount,
-      cardDiscount: Math.round(cardDiscountOf(orig) * ratio),
-      support: Math.round(supportOf(orig) * ratio),
+      cardDiscount: cancelDiscount,
+      support: cancelSupport,
       category: orig.category,
       sub: orig.sub ?? '',
       paymentId: orig.paymentId,
@@ -441,9 +499,10 @@ export default function Ledger() {
     const pay = paymentById[r.paymentId];
     const left = r.type === 'expense' ? remainingOf(rows, r) : null;
     const cancelled = r.type === 'expense' ? cancelledOf(rows, r.id) : 0;
-    const sup = supportOf(r);
+    const shown = r.type === 'expense' ? netExpenseOf(rows, r) : r;
+    const sup = supportOf(shown);
     const payText = paymentLabelOf(r, paymentById);
-    const dText = discountText(r);
+    const dText = discountText(shown);
     // 카테고리명 색: 취소는 원래 거래의 대분류 색을 따릅니다.
     const catColor = categoryColor(isCancel ? (orig?.category ?? '') : r.category);
     return (
@@ -452,7 +511,20 @@ export default function Ledger() {
           <div className="money-tagline">
             <span
               className="tag category-tag"
-              style={catColor.line ? { background: 'transparent', color: catColor.fg, border: `1px solid ${catColor.line}` } : { background: catColor.bg, color: catColor.fg }}
+              style={
+                catColor.line
+                  ? {
+                    background: 'transparent',
+                    color: catColor.fg,
+                    border: `1px solid ${catColor.line}`,
+                    opacity: isCancel ? 0.5 : 1,
+                  }
+                  : {
+                    background: catColor.bg,
+                    color: catColor.fg,
+                    opacity: isCancel ? 0.5 : 1,
+                  }
+              }
             >
               {isCancel ? `취소 · ${orig ? labelOf(orig) : '(원거래 없음)'}` : labelOf(r)}
             </span>
@@ -499,15 +571,21 @@ export default function Ledger() {
             )}
           </div>
           <small className="muted money-due">
-            {r.date} · 승인 {formatWon(r.amount)}
+            {r.date} · 승인 {formatWon(isCancel ? r.amount : shown.amount)}
             {dText && ` · ${dText}`}
             {sup > 0 && ` · 지원 ${formatWon(sup)}`}
           </small>
         </div>
         <div className="list-right">
-          <b className={isIncome || isCancel ? 'income' : 'expense'}>
-            {isIncome || isCancel ? '+' : '-'}
-            {formatWon(isIncome ? r.amount : actualOf(r))}
+          <b className={isIncome ? 'income' : 'expense'}>
+            {isIncome ? '+' : '-'}
+            {formatWon(
+              isIncome
+                ? r.amount
+                : isCancel
+                  ? actualOf(r)
+                  : actualOf(shown),
+            )}
           </b>
           {!isCancel && <button className="link-btn" onClick={() => setEditingId(r.id)}>수정</button>}
           {r.type === 'expense' && left > 0 && (
