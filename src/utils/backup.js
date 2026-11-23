@@ -25,7 +25,7 @@ export function downloadBackup() {
   const day = new Date().toISOString().slice(0, 10);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `life-dashboard-backup-${day}.json`;
+  a.download = `lifehub-backup-${day}.json`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

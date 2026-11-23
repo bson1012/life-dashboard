@@ -1,14 +1,24 @@
 :root {
-  --bg: #f3f3f8;
+  /* 팔레트 원색 */
+  --rose-quartz: #f2c6c4;
+  --serenity: #afc4e4;
+  --lavender: #d5cbe5;
+  --sky: #d5e3f0;
+  --navy-gray: #414b60;
+  --off-white: #faf9f8;
+
+  /* 화면에서 쓰는 역할별 토큰 */
+  --bg: var(--off-white);
   --card: #ffffff;
-  --text: #1d1d28;
-  --muted: #8b8b99;
-  --line: #ececf2;
-  --accent: #6d6fe0;
-  --accent-soft: #e9e9fb;
-  --pink: #e8456d;
-  --green: #1fa971;
-  --dark: #16161d;
+  --text: var(--navy-gray);
+  --muted: #6b7388;            /* 보조 글자 (흰 배경 대비 4.5:1 이상) */
+  --line: #e9e6e4;
+  --accent: var(--serenity);   /* 채움: 버튼, 선택 배경, 막대 */
+  --accent-text: #4a6a9c;      /* 글자: 흰 배경 위 강조 글자 (대비 확보) */
+  --accent-soft: var(--sky);
+  --pink: #e8456d;             /* 지출·경고 (의미 색, 아직 팔레트 밖) */
+  --green: #1fa971;            /* 수입·완료 (의미 색, 아직 팔레트 밖) */
+  --dark: var(--navy-gray);
   --radius: 20px;
   --shadow: 0 2px 12px rgba(20, 20, 40, 0.05);
   font-family: system-ui, 'Pretendard', 'Segoe UI', Roboto, sans-serif;

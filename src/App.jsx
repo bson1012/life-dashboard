@@ -7,6 +7,7 @@ import Lists from './components/Lists';
 import { repo } from './data/repository';
 import { formatDateTime } from './utils/format';
 import { PAGES, TABS, pageFromPath, toUrl } from './config/pages';
+import logo from './assets/logo.svg';
 import './App.css';
 
 
@@ -74,8 +75,8 @@ export default function App() {
     <div className="app">
       <aside className="sidebar">
         <div className="brand">
-          <span className="logo">LD</span>
-          <span>Life Dashboard</span>
+          <img className="logo" src={logo} alt="" />
+          <span>lifeHub</span>
         </div>
         <nav>
           {TABS.map((t) => (

@@ -19,20 +19,16 @@
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 15px;
   font-weight: 700;
+  font-size: 24px;
   padding: 0 8px 24px;
 }
 
 .logo {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  background: var(--dark);
-  color: var(--bg);
-  display: grid;
-  place-items: center;
-  font-size: 13px;
+  width: 36px;
+  height: 36px;
+  display: block;
 }
 
 nav {
@@ -150,7 +146,7 @@ nav {
   gap: 6px;
   text-align: left;
   font: inherit;
-  color: #1d1d28;
+  color: var(--text);
   cursor: default;
 }
 button.stat {
@@ -179,7 +175,7 @@ button.stat {
 }
 
 @media (prefers-color-scheme: dark) {
-  .stat { color: #1d1d28; }
+  .stat { color: var(--text); }
 }
 
 /* ---------- 폼 ---------- */
@@ -358,7 +354,7 @@ textarea {
   padding: 3px 9px;
   border-radius: 999px;
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 600;
 }
 .tag.income {
@@ -418,13 +414,13 @@ textarea {
   opacity: 0.7;
 }
 .chip.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+  background: var(--accent-soft);
+  border-color: var(--accent-soft);
+  color: var(--text);
   font-weight: 600;
 }
 .chip.active small {
-  color: #fff;
+  color: var(--text);
 }
 
 /* ---------- 보기 전환 · 중요도 · 카테고리 색 ---------- */
@@ -851,7 +847,7 @@ textarea {
 }
 .badge-soon {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .badge-week {
   background: var(--bg);
@@ -866,7 +862,7 @@ textarea {
 }
 .status-doing {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-text);
   border-color: transparent;
 }
 .status-hold {
@@ -897,7 +893,7 @@ textarea {
 }
 .bar > div {
   height: 100%;
-  background: linear-gradient(90deg, #8f91ec, var(--accent));
+  background: linear-gradient(90deg, var(--lavender), var(--accent));
   border-radius: 999px;
 }
 .bar-value {
@@ -940,8 +936,8 @@ textarea {
 /* ---------- 홈 (글래스 스타일) ---------- */
 .main-home {
   background:
-    radial-gradient(circle at 12% 88%, #f6d3e0 0%, transparent 42%),
-    linear-gradient(160deg, #b8b6e4 0%, #c3b8e3 42%, #d8bcdf 74%, #efc6d6 100%);
+    radial-gradient(circle at 12% 88%, var(--rose-quartz) 0%, transparent 42%),
+    linear-gradient(160deg, var(--sky) 0%, var(--lavender) 50%, var(--off-white) 100%);
   min-height: 100vh;
 }
 
@@ -949,7 +945,7 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 22px;
-  color: #fff;
+  color: var(--text);
   height: 100%;
 }
 
@@ -976,24 +972,23 @@ textarea {
   border: none;
   border-radius: 999px;
   padding: 12px 22px;
-  background: #fff;
-  color: #3b3570;
+  background: var(--card);
+  color: var(--text);
   font: inherit;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 6px 20px rgba(60, 40, 110, 0.18);
+  box-shadow: 0 6px 20px rgba(65, 75, 96, 0.14);
 }
 
 .glass {
-  background: rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.55);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
-  border: 1px solid rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.7);
   border-radius: 26px;
   padding: 22px 24px;
-  box-shadow: 0 8px 30px rgba(120, 100, 160, 0.10);
-  color: #fff;
-  text-shadow: 0 1px 6px rgba(90, 70, 130, 0.18);
+  box-shadow: 0 8px 30px rgba(65, 75, 96, 0.08);
+  color: var(--text);
 }
 
 .home-grid {
@@ -1024,7 +1019,7 @@ textarea {
   width: 230px;
   height: 230px;
   border-radius: 50%;
-  background: conic-gradient(#fff calc(var(--p) * 1%), rgba(255, 255, 255, 0.25) 0);
+  background: conic-gradient(var(--accent-text) calc(var(--p) * 1%), rgba(255, 255, 255, 0.6) 0);
   display: grid;
   place-items: center;
 }
@@ -1035,8 +1030,8 @@ textarea {
   width: 190px;
   height: 190px;
   border-radius: 50%;
-  background: linear-gradient(160deg, rgba(150, 140, 230, 0.85), rgba(190, 150, 220, 0.85));
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+  background: linear-gradient(160deg, var(--serenity), var(--lavender));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1106,7 +1101,7 @@ textarea {
 }
 .tile-list .income,
 .tile-list .expense {
-  color: #fff;
+  color: var(--text);
 }
 
 .mini-bars {
@@ -1137,7 +1132,7 @@ textarea {
 }
 
 .home .overdue {
-  color: #ffe1ea;
+  color: var(--pink);
   font-weight: 600;
 }
 
@@ -1276,11 +1271,11 @@ textarea {
 }
 .list-pick.active {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 600;
 }
 .list-pick.active small {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .field-row {
   display: grid;
@@ -1390,7 +1385,7 @@ textarea {
     cursor: pointer;
   }
   .tabbar button.active {
-    color: var(--accent);
+    color: var(--accent-text);
     font-weight: 600;
   }
   .toasts {
@@ -1590,7 +1585,7 @@ li.list-row-cat > .todo-settings {
   background: rgba(127, 127, 127, 0.12);
 }
 .page-menu button.active {
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 700;
 }
 .page-menu .nav-icon {
@@ -1603,7 +1598,7 @@ li.list-row-cat > .todo-settings {
 }
 .page-menu-check {
   font-size: 18px;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 @keyframes page-menu-fade {
   from { opacity: 0; }
