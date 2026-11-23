@@ -78,14 +78,16 @@ export function billingFor(rows, payments, issuers, B) {
   const groups = {};
   const byPayment = {};
 
-  const add = (group, payment, billed, discount) => {
+  // excluded: 청구 미포함(billExcluded)인 거래. 청구 합계에서는 빼고, 할인 기록에는 그대로 남깁니다.
+  const add = (group, payment, billed, discount, excluded) => {
+    const bp = (byPayment[payment.id] ??= { billed: 0, discount: 0 });
+    bp.discount += discount;
+    if (excluded) return;
     const g = (groups[group.key] ??= { key: group.key, name: group.name, issuer: group.issuer, total: 0, lines: {} });
     g.total += billed;
     const line = (g.lines[payment.id] ??= { paymentId: payment.id, name: payment.name, billed: 0 });
     line.billed += billed;
-    const bp = (byPayment[payment.id] ??= { billed: 0, discount: 0 });
     bp.billed += billed;
-    bp.discount += discount;
   };
 
   for (const r of rows) {
@@ -93,7 +95,7 @@ export function billingFor(rows, payments, issuers, B) {
       const p = payById[r.paymentId];
       const group = billingGroupOf(p, issuerById);
       if (!group || billingMonthOf(r.date, group.issuer) !== B) continue;
-      add(group, p, r.amount - cardDiscount(r), cardDiscount(r));
+      add(group, p, r.amount - cardDiscount(r), cardDiscount(r), !!r.billExcluded);
     } else if (r.type === 'cancel') {
       const orig = rowById[r.refId];
       const p = orig && payById[orig.paymentId];
@@ -101,7 +103,7 @@ export function billingFor(rows, payments, issuers, B) {
       if (!group) continue;
       const cancelB = r.billMonth ?? suggestedCancelBillMonth(orig, r, group.issuer);
       if (cancelB !== B) continue;
-      add(group, p, -(r.amount - cardDiscount(r)), -cardDiscount(r));
+      add(group, p, -(r.amount - cardDiscount(r)), -cardDiscount(r), !!r.billExcluded);
     }
   }
 

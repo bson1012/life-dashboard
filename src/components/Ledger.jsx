@@ -587,6 +587,17 @@ export default function Ledger() {
                 )}
               </span>
             )}
+            {!isIncome && (
+              <span className="flag-row inline">
+                {/* 청구 미포함: 기본은 청구에 포함합니다. 현금으로 돌려받은 취소 등에 씁니다. */}
+                <button
+                  className={`flag-chip${r.billExcluded ? ' on' : ''}`}
+                  onClick={() => update(r.id, { billExcluded: !r.billExcluded })}
+                >
+                  청구 제외
+                </button>
+              </span>
+            )}
             {payText && <span className="memo">{payText}</span>}
             {cancelled > 0 && (
               <span className="memo cancel-status">
