@@ -8,6 +8,7 @@ import { repo } from './data/repository';
 import { formatDateTime } from './utils/format';
 import { PAGES, TABS, pageFromPath, toUrl } from './config/pages';
 import logo from './assets/logo.svg';
+import AccountStatus from './components/AccountStatus';
 import './App.css';
 
 
@@ -90,7 +91,7 @@ export default function App() {
           {perm === 'default' && (
             <button className="btn-light" onClick={askPermission}>알림 켜기</button>
           )}
-          <small className="muted">데이터는 이 브라우저에 저장됩니다</small>
+          <AccountStatus />
         </div>
       </aside>
 
@@ -121,6 +122,9 @@ export default function App() {
                 {tab === t.id && <span className="page-menu-check" aria-hidden="true">✓</span>}
               </button>
             ))}
+            <div className="page-menu-account">
+              <AccountStatus />
+            </div>
           </nav>
         </div>
       )}

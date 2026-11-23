@@ -65,6 +65,53 @@ nav {
   flex-shrink: 0;
 }
 
+/* 로그인·동기화 상태 (사이드바 아래, 휴대폰 메뉴 안) */
+.account-status {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--bg);
+  font-size: 14px;
+}
+.account-line {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+.account-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+.account-dot-ok { background: var(--green); }
+.account-dot-warn { background: var(--pink); }
+.account-dot-off { background: #d9a400; }
+.account-dot-local { background: var(--serenity); }
+.account-email {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.account-detail {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.account-status .btn-light {
+  margin-top: 4px;
+}
+.page-menu-account {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
 .sidebar-foot {
   margin-top: auto;
   display: flex;

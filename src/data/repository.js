@@ -10,6 +10,7 @@ import { supabase } from './supabase';
 const PREFIX = 'lifeDashboard:';
 const CURSOR_KEY = PREFIX + 'sync:cursor';
 const PUSHED_KEY = PREFIX + 'sync:pushed';
+const OWNER_KEY = PREFIX + 'sync:owner';
 // 기존 Supabase 프로젝트 안에서 다른 테이블과 이름이 겹치지 않도록 접두사를 붙입니다.
 const TABLE = 'life_dashboard_records';
 const PAGE = 1000;
@@ -62,6 +63,24 @@ export class LocalRepository {
 
   async remove(collection, id) {
     return this.update(collection, id, { deleted: true });
+  }
+
+  // 이 기기의 캐시가 어느 계정 것인지 기록합니다. 다른 계정이면 캐시를 비운 뒤 기록합니다.
+  // 처음 로그인할 때는 기존에 이 기기에 있던 데이터를 그대로 두고, 동기화에서 서버로 올립니다.
+  setOwner(userId) {
+    const prev = localStorage.getItem(OWNER_KEY);
+    if (prev && prev !== userId) this.clearLocal();
+    localStorage.setItem(OWNER_KEY, userId);
+  }
+
+  // 이 기기의 데이터 캐시와 동기화 기록을 지웁니다. 시드 플래그는 남깁니다.
+  clearLocal() {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key.startsWith(PREFIX) && !key.includes(':seeded')) keys.push(key);
+    }
+    keys.forEach((key) => localStorage.removeItem(key));
   }
 
   // 행 하나를 저장합니다. 로컬에서는 캐시에만 씁니다.
