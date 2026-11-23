@@ -374,7 +374,7 @@ export default function Ledger() {
 
   function startCancel(r) {
     // 취소일 기본값: 이용이 발생한 날짜. 필요하면 폼에서 바꿀 수 있습니다.
-    setCancelDraft({ id: r.id, amount: String(remainingOf(rows, r)), date: r.date, memo: '', billChoice: 'auto', perfCount: true });
+    setCancelDraft({ id: r.id, amount: String(remainingOf(rows, r)), date: r.date, memo: '', billChoice: 'auto', perfCount: true, discountBack: true });
   }
 
   // 취소 청구월 선택지: 자동 추천, 원결제 청구월, 취소 청구월
@@ -445,7 +445,8 @@ export default function Ledger() {
       merchant: orig.merchant ?? '',
       memo: cancelDraft.memo.trim(),
       amount,
-      cardDiscount: cancelDiscount,
+      // 할인 되돌리기를 끄면 이 취소는 할인 내역을 건드리지 않습니다(할인 0 으로 기록).
+      cardDiscount: cancelDraft.discountBack === false ? 0 : cancelDiscount,
       support: cancelSupport,
       category: orig.category,
       sub: orig.sub ?? '',
@@ -628,6 +629,7 @@ export default function Ledger() {
               title={labelOf(r)}
               billOptions={cancelBillOptions(r, cancelDraft.date)}
               perfApplies={isCounted(r, paymentById[r.paymentId])}
+              discountApplies={cardDiscountOf(shown) > 0}
             />
           </div>
         )}
@@ -1076,7 +1078,7 @@ export default function Ledger() {
 
 
 // 취소 입력 폼 (내역 아래에 펼쳐짐)
-function CancelForm({ draft, setDraft, onSubmit, onClose, left, title, billOptions, perfApplies }) {
+function CancelForm({ draft, setDraft, onSubmit, onClose, left, title, billOptions, perfApplies, discountApplies }) {
   return (
     <form
       className="card cancel-form"
@@ -1123,6 +1125,16 @@ function CancelForm({ draft, setDraft, onSubmit, onClose, left, title, billOptio
             onChange={(e) => setDraft({ ...draft, perfCount: e.target.checked })}
           />
           실적에서 빼기
+        </label>
+      )}
+      {discountApplies && (
+        <label className="cancel-option">
+          <input
+            type="checkbox"
+            checked={draft.discountBack !== false}
+            onChange={(e) => setDraft({ ...draft, discountBack: e.target.checked })}
+          />
+          할인도 함께 되돌리기
         </label>
       )}
       <button className="btn-dark" type="submit">취소 확인</button>
