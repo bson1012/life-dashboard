@@ -24,8 +24,8 @@ function LimitBar({ used, total }) {
 
 // 이번 달 결제수단별 실적 현황: 사용액, 달성 구간, 다음 구간까지 남은 금액.
 // 혜택 규칙이 있는 카드는 이번 달 할인 한도와 분야별 사용·남은 한도도 보여줍니다.
-export default function PerformancePanel({ rows, payments, month, limitRows = [], onOpenLimits }) {
-  const items = useMemo(() => performanceFor(rows, payments, month), [rows, payments, month]);
+export default function PerformancePanel({ rows, payments, issuers = [], month, limitRows = [], onOpenLimits }) {
+  const items = useMemo(() => performanceFor(rows, payments, issuers, month), [rows, payments, issuers, month]);
 
   return (
     <div className="card">
@@ -40,7 +40,7 @@ export default function PerformancePanel({ rows, payments, month, limitRows = []
       {items.length === 0 && <p className="muted">실적으로 잡힌 결제가 없어요.</p>}
       <div className="perf-list">
       {items.map((it) => {
-        const { payment: p, spent, achieved, next, remaining, ratio, billed, discount } = it;
+        const { payment: p, spent, achieved, next, remaining, ratio } = it;
         const benefits = benefitsOf(p);
         const isBenefit = benefits.length > 0;
         const monthLimit = isBenefit ? limitFor(limitRows, p.id, month) : 0;
@@ -60,10 +60,6 @@ export default function PerformancePanel({ rows, payments, month, limitRows = []
                 <div style={{ width: `${Math.round(ratio * 100)}%` }} />
               </div>
             )}
-            <small className="perf-status perf-billing">
-              청구 {formatWon(billed)}
-              {discount !== 0 && ` · 할인 ${formatWon(discount)}`}
-            </small>
             <small className="perf-status">
               {next
                 ? `${man(next)} 구간까지 ${formatWon(remaining)} 남음${achieved ? ` · 현재 ${man(achieved)} 달성` : ''}`

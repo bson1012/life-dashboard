@@ -21,6 +21,8 @@ import {
   supportOf,
 } from '../utils/ledger';
 import { isCounted, perfOf } from '../utils/performance';
+import { billingMonthOf, issuerOf, suggestedCancelBillMonth } from '../utils/billing';
+import BillingPanel from './BillingPanel';
 import AmountExtras from './AmountExtras';
 import CategoryPie from './CategoryPie';
 import ManageMoney, { FIXED_KIND_LABEL } from './ManageMoney';
@@ -171,6 +173,10 @@ export default function Ledger() {
   const payApi = useCollection('paymentMethods');
   const catApi = useCollection('ledgerCategories');
   const limitApi = useCollection('discountLimits'); // 카드별 월 할인 한도 { paymentId, month, limit }
+  const issuerApi = useCollection('cardIssuers'); // 카드사 { name, cycle: 이용기간·결제일 또는 null }
+  const [sideView, setSideView] = useState('perf'); // 오른쪽 열: 청구 | 실적 (기본: 실적)
+  const issuers = issuerApi.rows;
+  const issuerById = useMemo(() => Object.fromEntries(issuers.map((i) => [i.id, i])), [issuers]);
   const fixedApi = useCollection('fixedCosts'); // 매달 고정 지출 { name, amount, day, paymentId, memo, active }
   const [month, setMonth] = useState(monthStr());
   const [form, setForm] = useState(newForm());
@@ -367,7 +373,21 @@ export default function Ledger() {
   }
 
   function startCancel(r) {
-    setCancelDraft({ id: r.id, amount: String(remainingOf(rows, r)), date: todayStr(), memo: '' });
+    // 취소일 기본값: 이용이 발생한 날짜. 필요하면 폼에서 바꿀 수 있습니다.
+    setCancelDraft({ id: r.id, amount: String(remainingOf(rows, r)), date: r.date, memo: '', billChoice: 'auto', perfCount: true });
+  }
+
+  // 취소 청구월 선택지: 자동 추천, 원결제 청구월, 취소 청구월
+  function cancelBillOptions(orig, date) {
+    const issuer = issuerOf(paymentById[orig.paymentId], issuerById);
+    const auto = suggestedCancelBillMonth(orig, { date }, issuer);
+    const origB = billingMonthOf(orig.date, issuer);
+    const cancelB = billingMonthOf(date, issuer);
+    return [
+      { v: 'auto', label: `자동 추천: ${auto}` },
+      { v: origB, label: `원결제 청구월: ${origB}` },
+      { v: cancelB, label: `취소 청구월: ${cancelB}` },
+    ];
   }
 
   // 부분 취소 또는 전체 취소: 원래 지출에 연결된 취소 거래를 만듭니다.
@@ -415,9 +435,12 @@ export default function Ledger() {
         ? remainingSupport
         : Math.min(remainingSupport, Math.round(remainingSupport * ratio));
 
+    // 청구월: 자동이면 null 로 두고 기본 규칙을 씁니다. 실적: 체크를 풀면 실적에서 빼지 않습니다.
     await add({
       type: 'cancel',
       refId: orig.id,
+      billMonth: cancelDraft.billChoice === 'auto' ? null : cancelDraft.billChoice,
+      perfOff: !cancelDraft.perfCount,
       date: cancelDraft.date,
       merchant: orig.merchant ?? '',
       memo: cancelDraft.memo.trim(),
@@ -470,7 +493,7 @@ export default function Ledger() {
   };
 
   // 내역 한 줄. 수입, 지출, 취소 모두 같은 모양입니다. 이동은 From → To 로 따로 보여 줍니다.
-  const renderRow = (r) => {
+  const renderRow = (r, nested = false) => {
     if (r.type === 'transfer') {
       const fromName = paymentById[r.fromId]?.name ?? '(삭제된 계좌)';
       const toName = paymentById[r.toId]?.name ?? '(삭제된 계좌)';
@@ -501,12 +524,13 @@ export default function Ledger() {
     const cancelled = r.type === 'expense' ? cancelledOf(rows, r.id) : 0;
     const shown = r.type === 'expense' ? netExpenseOf(rows, r) : r;
     const sup = supportOf(shown);
-    const payText = paymentLabelOf(r, paymentById);
+    // 취소 행은 결제수단 자리에 '취소'를 보여 줍니다.
+    const payText = isCancel ? '취소' : paymentLabelOf(r, paymentById);
     const dText = discountText(shown);
     // 카테고리명 색: 취소는 원래 거래의 대분류 색을 따릅니다.
     const catColor = categoryColor(isCancel ? (orig?.category ?? '') : r.category);
     return (
-      <li key={r.id} className={isCancel ? 'cancel-row' : ''}>
+      <li key={r.id} className={[isCancel && 'cancel-row', nested && 'cancel-nested'].filter(Boolean).join(' ') || undefined}>
         <div className="list-main">
           <div className="money-tagline">
             <span
@@ -526,7 +550,7 @@ export default function Ledger() {
                   }
               }
             >
-              {isCancel ? `취소 · ${orig ? labelOf(orig) : '(원거래 없음)'}` : labelOf(r)}
+              {isCancel ? (orig ? labelOf(orig) : '취소 · (원거래 없음)') : labelOf(r)}
             </span>
             {r.fixedId && <span className="memo"> · 고정</span>}
           </div>
@@ -577,8 +601,8 @@ export default function Ledger() {
           </small>
         </div>
         <div className="list-right">
-          <b className={isIncome ? 'income' : 'expense'}>
-            {isIncome ? '+' : '-'}
+          <b className={isIncome ? 'income' : isCancel ? 'cancel-amt' : 'expense'}>
+            {isIncome ? '+' : isCancel ? '' : '-'}
             {formatWon(
               isIncome
                 ? r.amount
@@ -602,6 +626,8 @@ export default function Ledger() {
               onClose={() => setCancelDraft(null)}
               left={remainingOf(rows, r)}
               title={labelOf(r)}
+              billOptions={cancelBillOptions(r, cancelDraft.date)}
+              perfApplies={isCounted(r, paymentById[r.paymentId])}
             />
           </div>
         )}
@@ -649,6 +675,21 @@ export default function Ledger() {
     return hay.includes(kw) || (/^\d+$/.test(digits) && String(r.amount) === digits);
   };
   const searchedRows = listRows.filter(matchesKeyword);
+  // 취소내역은 원거래가 목록에 있으면 날짜와 상관없이 원거래 바로 밑에 들여쓰기로 보여 줍니다.
+  // 원거래가 목록에 없는 취소는 제자리(날짜순)에 그대로 둡니다.
+  const shownIds = new Set(searchedRows.map((r) => r.id));
+  const cancelsByOrig = new Map();
+  for (const r of searchedRows) {
+    if (r.type === 'cancel' && shownIds.has(r.refId)) {
+      if (!cancelsByOrig.has(r.refId)) cancelsByOrig.set(r.refId, []);
+      cancelsByOrig.get(r.refId).push(r);
+    }
+  }
+  const topRows = searchedRows.filter((r) => !(r.type === 'cancel' && shownIds.has(r.refId)));
+  const renderWithCancels = (r) => [
+    renderRow(r),
+    ...(cancelsByOrig.get(r.id) ?? []).map((c) => renderRow(c, true)),
+  ];
   // 필터나 검색이 걸려 있으면 목록 아래에 그 결과의 합계를 보여 줍니다. 이동은 합계에 넣지 않고 따로 셉니다.
   const isFiltering = typeFilters.length > 0 || payFilter !== 'all' || kw !== '';
   const filteredNoTransfer = searchedRows.filter((r) => r.type !== 'transfer');
@@ -879,7 +920,7 @@ export default function Ledger() {
             {!ready ? null : searchedRows.length === 0 ? (
               <p className="muted">{kw ? '검색 결과가 없어요.' : '표시할 내역이 없어요.'}</p>
             ) : (
-              <ul className="list">{searchedRows.map(renderRow)}</ul>
+              <ul className="list">{topRows.flatMap(renderWithCancels)}</ul>
             )}
             {ready && isFiltering && searchedRows.length > 0 && (
               <div
@@ -944,6 +985,30 @@ export default function Ledger() {
 
         </div>
         <div className="money-side-col">
+          {/* 청구(카드사별 합산, 청구월 기준)와 실적(사용한 달 기준)은 따로 봅니다. */}
+          <div className="segmented side-switch">
+            <button className={sideView === 'perf' ? 'active' : ''} onClick={() => setSideView('perf')}>
+              실적
+            </button>
+            <button className={sideView === 'billing' ? 'active' : ''} onClick={() => setSideView('billing')}>
+              청구 예정
+            </button>
+          </div>
+          {sideView === 'billing' ? (
+            <BillingPanel rows={rows} payments={payments} issuers={issuers} month={month} />
+          ) : (
+            <PerformancePanel
+              rows={rows}
+              payments={payments}
+              issuers={issuers}
+              month={month}
+              limitRows={limitRows}
+              onOpenLimits={() => {
+                setManageTab('limit');
+                setManageOpen(true);
+              }}
+            />
+          )}
           {/* 통계: 카테고리별 지출 비율과 구분별 합계 */}
           <div className="ledger-split">
             <div className="card split-card">
@@ -971,16 +1036,6 @@ export default function Ledger() {
               </dl>
             </div>
           </div>
-          <PerformancePanel
-            rows={rows}
-            payments={payments}
-            month={month}
-            limitRows={limitRows}
-            onOpenLimits={() => {
-              setManageTab('limit');
-              setManageOpen(true);
-            }}
-          />
         </div>
       </div>
 
@@ -1006,6 +1061,7 @@ export default function Ledger() {
       {manageOpen && (
         <ManageMoney
           payApi={payApi}
+          issuerApi={issuerApi}
           catApi={catApi}
           limitApi={limitApi}
           fixedApi={fixedApi}
@@ -1020,7 +1076,7 @@ export default function Ledger() {
 
 
 // 취소 입력 폼 (내역 아래에 펼쳐짐)
-function CancelForm({ draft, setDraft, onSubmit, onClose, left, title }) {
+function CancelForm({ draft, setDraft, onSubmit, onClose, left, title, billOptions, perfApplies }) {
   return (
     <form
       className="card cancel-form"
@@ -1039,12 +1095,36 @@ function CancelForm({ draft, setDraft, onSubmit, onClose, left, title }) {
       <button type="button" className="link-btn" onClick={() => setDraft({ ...draft, amount: String(left) })}>
         전체 취소
       </button>
-      <input type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} />
+      <input
+        type="date"
+        value={draft.date}
+        onChange={(e) => setDraft({ ...draft, date: e.target.value, billChoice: 'auto' })}
+      />
       <input
         placeholder="메모 (선택)"
         value={draft.memo}
         onChange={(e) => setDraft({ ...draft, memo: e.target.value })}
       />
+      {billOptions && (
+        <label className="cancel-option">
+          청구 반영 월
+          <select value={draft.billChoice} onChange={(e) => setDraft({ ...draft, billChoice: e.target.value })}>
+            {billOptions.map((o) => (
+              <option key={o.v} value={o.v}>{o.label}</option>
+            ))}
+          </select>
+        </label>
+      )}
+      {perfApplies && (
+        <label className="cancel-option">
+          <input
+            type="checkbox"
+            checked={draft.perfCount}
+            onChange={(e) => setDraft({ ...draft, perfCount: e.target.checked })}
+          />
+          실적에서 빼기
+        </label>
+      )}
       <button className="btn-dark" type="submit">취소 확인</button>
       <button className="link-btn" type="button" onClick={onClose}>닫기</button>
     </form>

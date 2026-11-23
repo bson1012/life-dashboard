@@ -9,8 +9,37 @@ const ADDED_FLAG = 'lifeDashboard:seeded:money:added1';
 let seeding = null;
 
 export function ensureMoneySeed() {
-  if (!seeding) seeding = seed().then(addMissingPayments);
+  if (!seeding) seeding = seed().then(addMissingPayments).then(seedIssuers);
   return seeding;
+}
+
+// 카드사 기본값 (청구 기간과 결제일). 이후에는 가계부 관리 > 카드사 에서 바꿉니다.
+// cycle 이 null 이면 사용한 달 그대로 청구합니다.
+const ISSUER_SEED = [
+  { name: '삼성', cycle: { from: { offset: -1, day: 13 }, to: { offset: 0, day: 12 }, paymentDay: 25 } },
+  { name: '하나', cycle: { from: { offset: -1, day: 1 }, to: { offset: -1, day: 31 }, paymentDay: 13 } },
+  { name: '현대', cycle: { from: { offset: -1, day: 1 }, to: { offset: -1, day: 31 }, paymentDay: 12 } },
+  { name: '신한', cycle: { from: { offset: -1, day: 1 }, to: { offset: -1, day: 31 }, paymentDay: 14 } },
+  { name: '남편', cycle: null },
+];
+const ISSUER_FLAG = 'lifeDashboard:seeded:issuers1';
+
+// 카드사를 한 번 넣고, 이름이 카드사 이름으로 시작하는 신용카드를 그 카드사에 연결합니다.
+// 연결은 기본값일 뿐이라서 이후에는 결제수단 편집에서 바꿀 수 있습니다.
+async function seedIssuers() {
+  if (localStorage.getItem(ISSUER_FLAG)) return;
+  let issuers = await repo.list('cardIssuers');
+  if (issuers.length === 0) {
+    for (const i of ISSUER_SEED) await repo.create('cardIssuers', i);
+    issuers = await repo.list('cardIssuers');
+  }
+  const payments = await repo.list('paymentMethods');
+  for (const p of payments) {
+    if (p.kind !== 'card' || p.issuerId) continue;
+    const match = issuers.find((i) => p.name === i.name || p.name.startsWith(i.name + ' '));
+    if (match) await repo.update('paymentMethods', p.id, { issuerId: match.id });
+  }
+  localStorage.setItem(ISSUER_FLAG, '1');
 }
 
 // 예전에 시드된 저장소에도 새로 추가된 기본 결제수단을 한 번 넣습니다. 같은 이름이 있으면 건너뜁니다.

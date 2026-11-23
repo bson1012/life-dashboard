@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import MoneyInput from './MoneyInput';
 import { accountsFor, KIND_OPTIONS, sortByKind, tierText } from '../config/payments';
+import { categoryKey, duplicateGroups, isDuplicateName, mergeCategoryDuplicates, mergeDuplicates, normName } from '../utils/dedupe';
 import { formatWon } from '../utils/format';
 import { perfOf } from '../utils/performance';
 import { benefitsOf, limitsOf, rateText } from '../config/cardBenefits';
@@ -26,8 +27,45 @@ function moved(arr, fromIdx, toIdx) {
   return next;
 }
 
+// 같은 이름의 결제수단·카드사가 있으면 알려 주고, 한 번에 합칠 수 있게 합니다.
+function DuplicateBanner({ payApi, issuerApi, catApi, txApi, limitApi, fixedApi }) {
+  const [busy, setBusy] = useState(false);
+  const payGroups = duplicateGroups(payApi.rows).length;
+  const issuerGroups = duplicateGroups(issuerApi.rows).length;
+  const catGroups = duplicateGroups(catApi?.rows ?? [], categoryKey).length;
+  if (payGroups + issuerGroups + catGroups === 0) return null;
+
+  async function merge() {
+    if (!window.confirm('같은 이름으로 중복된 항목을 하나로 합칠까요?\n거래, 한도, 고정 항목은 남는 항목으로 옮겨집니다.')) return;
+    setBusy(true);
+    try {
+      const r = await mergeDuplicates();
+      const cat = await mergeCategoryDuplicates();
+      await Promise.all([payApi, issuerApi, catApi, txApi, limitApi, fixedApi].filter(Boolean).map((a) => a.reload()));
+      window.alert(`결제수단 ${r.removedPayments}개, 카드사 ${r.removedIssuers}개, 카테고리 ${cat}개를 합쳤어요.`);
+    } catch (e) {
+      window.alert(`정리하는 중 문제가 생겼어요: ${e.message}`);
+    }
+    setBusy(false);
+  }
+
+  return (
+    <div className="card dup-banner">
+      <span>
+        같은 이름이 두 번 들어간 항목이 있어요
+        {payGroups > 0 && ` · 결제수단 ${payGroups}개`}
+        {issuerGroups > 0 && ` · 카드사 ${issuerGroups}개`}
+        {catGroups > 0 && ` · 카테고리 ${catGroups}개`}
+      </span>
+      <button className="btn-dark" onClick={merge} disabled={busy}>
+        {busy ? '정리 중…' : '중복 합치기'}
+      </button>
+    </div>
+  );
+}
+
 // 가계부 관리 팝업: 결제수단 / 카테고리
-export default function ManageMoney({ payApi, catApi, limitApi, fixedApi, txApi, initialTab = 'pay', onClose }) {
+export default function ManageMoney({ payApi, issuerApi, catApi, limitApi, fixedApi, txApi, initialTab = 'pay', onClose }) {
   const [tab, setTab] = useState(initialTab);
 
   return (
@@ -40,6 +78,7 @@ export default function ManageMoney({ payApi, catApi, limitApi, fixedApi, txApi,
         <div className="segmented manage-tabs">
           {[
             ['pay', '결제수단'],
+            ['issuer', '카드사'],
             ['cat', '카테고리'],
             ['limit', '할인 한도'],
             ['fixed', '고정 지출'],
@@ -50,7 +89,16 @@ export default function ManageMoney({ payApi, catApi, limitApi, fixedApi, txApi,
             </button>
           ))}
         </div>
-        {tab === 'pay' && <PaymentManager api={payApi} />}
+        <DuplicateBanner
+          payApi={payApi}
+          issuerApi={issuerApi}
+          catApi={catApi}
+          txApi={txApi}
+          limitApi={limitApi}
+          fixedApi={fixedApi}
+        />
+        {tab === 'pay' && <PaymentManager api={payApi} issuerApi={issuerApi} />}
+        {tab === 'issuer' && <IssuerManager api={issuerApi} payApi={payApi} />}
         {tab === 'cat' && <CategoryManager api={catApi} />}
         {tab === 'limit' && <LimitManager api={limitApi} payApi={payApi} />}
         {tab === 'fixed' && <FixedManager api={fixedApi} payApi={payApi} catApi={catApi} />}
@@ -63,6 +111,7 @@ export default function ManageMoney({ payApi, catApi, limitApi, fixedApi, txApi,
 const BLANK_PAY = {
   kind: 'card',
   name: '',
+  issuerId: '',
   tiers: '',
   spend: true,
   income: false,
@@ -298,11 +347,13 @@ function BulkImport({ txApi, payApi }) {
   );
 }
 
-function PaymentManager({ api }) {
+function PaymentManager({ api, issuerApi }) {
   const [form, setForm] = useState(BLANK_PAY);
   const [editingId, setEditingId] = useState(null);
   const [dragId, setDragId] = useState(null);
   const rows = [...api.rows].sort(byOrder);
+  const issuers = [...(issuerApi?.rows ?? [])].sort((a, b) => a.name.localeCompare(b.name));
+  const issuerNameOf = (id) => issuers.find((i) => i.id === id)?.name;
 
   function reset() {
     setForm(BLANK_PAY);
@@ -314,6 +365,7 @@ function PaymentManager({ api }) {
     setForm({
       kind: p.kind,
       name: p.name,
+      issuerId: p.issuerId ?? '',
       tiers: (p.tiers ?? []).join(', '),
       spend: !!p.spend,
       income: !!p.income,
@@ -334,11 +386,16 @@ function PaymentManager({ api }) {
     e.preventDefault();
     const name = form.name.trim();
     if (!name) return;
+    if (isDuplicateName(api.rows, name, editingId)) {
+      return window.alert(`"${name}" 결제수단이 이미 있어요. 기존 항목을 수정해 주세요.`);
+    }
     // 신용카드와 체크카드는 같은 할인 혜택·월 통합 한도 규칙을 씁니다.
     const isCard = form.kind === 'card' || form.kind === 'check';
     const data = {
       kind: form.kind,
       name,
+      // 카드사는 신용카드에만 연결합니다. 없으면 null (청구 묶음이 결제수단 하나가 됩니다).
+      issuerId: form.kind === 'card' && form.issuerId ? form.issuerId : null,
       tiers: form.tiers.split(/[,\s/]+/).map(Number).filter((n) => n > 0),
       spend: form.spend,
       income: form.income,
@@ -391,6 +448,18 @@ function PaymentManager({ api }) {
           value={form.name}
           onChange={(e) => setForm({ ...form, name: e.target.value })}
         />
+        {form.kind === 'card' && (
+          <select
+            value={form.issuerId}
+            onChange={(e) => setForm({ ...form, issuerId: e.target.value })}
+            aria-label="카드사"
+          >
+            <option value="">카드사 없음 (사용한 달 그대로)</option>
+            {issuers.map((i) => (
+              <option key={i.id} value={i.id}>{i.name}</option>
+            ))}
+          </select>
+        )}
         <input
           className="wide"
           placeholder="실적 구간, 만원 단위 (예: 30, 60, 100) — 없으면 비워 두세요"
@@ -516,6 +585,7 @@ function PaymentManager({ api }) {
             <b>{p.name}</b>{' '}
             <small className="muted">
               {KIND_OPTIONS.find((k) => k.v === p.kind)?.label}
+              {issuerNameOf(p.issuerId) && ` · ${issuerNameOf(p.issuerId)}`}
               {tierText(p.tiers) && ` · ${tierText(p.tiers)}`}
               {p.benefits?.length > 0 && ` · 혜택 ${p.benefits.map((b) => `${b.label} ${rateText(b)}`).join(', ')}`}
               {p.totalLimitOptions?.length > 0 && ` · 통합 한도 옵션 ${p.totalLimitOptions.map((v) => formatWon(v)).join(' / ')}`}
@@ -526,6 +596,160 @@ function PaymentManager({ api }) {
           <div className="list-right">
             <button className="link-btn" onClick={() => startEdit(p)}>수정</button>
             <button className="link-btn" onClick={() => remove(p)}>삭제</button>
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
+// 카드사: 이용기간(시작·끝)과 결제일. 바뀔 수 있으니 여기서 언제든 고칩니다.
+const BLANK_ISSUER = {
+  name: '',
+  noCycle: false,
+  fromPrev: true,
+  fromDay: '1',
+  toPrev: true,
+  toDay: '31',
+  paymentDay: '',
+};
+
+const dayValue = (v) => {
+  const d = Math.round(Number(v));
+  return d >= 1 && d <= 31 ? d : null;
+};
+
+const cycleText = (c) => {
+  if (!c) return '사용한 달 그대로 청구';
+  const part = (x) => `${x.offset === -1 ? '전월' : '당월'} ${x.day === 31 ? '말일' : `${x.day}일`}`;
+  return `이용기간 ${part(c.from)} ~ ${part(c.to)} · 결제일 ${c.paymentDay}일`;
+};
+
+function IssuerManager({ api, payApi }) {
+  const [form, setForm] = useState(BLANK_ISSUER);
+  const [editingId, setEditingId] = useState(null);
+  const rows = [...api.rows].sort((a, b) => a.name.localeCompare(b.name));
+
+  function reset() {
+    setForm(BLANK_ISSUER);
+    setEditingId(null);
+  }
+
+  function startEdit(i) {
+    const c = i.cycle;
+    setEditingId(i.id);
+    setForm({
+      name: i.name,
+      noCycle: !c,
+      fromPrev: (c?.from.offset ?? -1) === -1,
+      fromDay: String(c?.from.day ?? 1),
+      toPrev: (c?.to.offset ?? 0) === -1,
+      toDay: String(c?.to.day ?? 31),
+      paymentDay: String(c?.paymentDay ?? ''),
+    });
+  }
+
+  async function save(e) {
+    e.preventDefault();
+    const name = form.name.trim();
+    if (!name) return;
+    if (isDuplicateName(api.rows, name, editingId)) {
+      return window.alert(`"${name}" 카드사가 이미 있어요. 기존 항목을 수정해 주세요.`);
+    }
+    let cycle = null;
+    if (!form.noCycle) {
+      const fromDay = dayValue(form.fromDay);
+      const toDay = dayValue(form.toDay);
+      const paymentDay = dayValue(form.paymentDay);
+      if (!fromDay || !toDay || !paymentDay) {
+        return window.alert('이용기간 시작·끝과 결제일을 1~31 사이의 날짜로 입력해 주세요. (31은 말일)');
+      }
+      cycle = {
+        from: { offset: form.fromPrev ? -1 : 0, day: fromDay },
+        to: { offset: form.toPrev ? -1 : 0, day: toDay },
+        paymentDay,
+      };
+    }
+    const data = { name, cycle };
+    if (editingId) await api.update(editingId, data);
+    else await api.add(data);
+    reset();
+  }
+
+  async function remove(i) {
+    const used = payApi.rows.filter((p) => p.issuerId === i.id).length;
+    if (used > 0) {
+      return window.alert(`이 카드사를 쓰는 결제수단이 ${used}개 있어요. 결제수단에서 카드사를 먼저 바꿔 주세요.`);
+    }
+    if (!window.confirm(`"${i.name}" 카드사를 삭제할까요?`)) return;
+    await api.remove(i.id);
+    if (editingId === i.id) reset();
+  }
+
+  return (
+    <>
+      <form className="manage-form" onSubmit={save}>
+        <input
+          placeholder="카드사 이름 (예: 삼성, 하나)"
+          value={form.name}
+          onChange={(e) => setForm({ ...form, name: e.target.value })}
+        />
+        <label className="wide">
+          <input
+            type="checkbox"
+            checked={form.noCycle}
+            onChange={(e) => setForm({ ...form, noCycle: e.target.checked })}
+          />{' '}
+          사용한 달 그대로 청구 (이용기간·결제일 없음)
+        </label>
+        {!form.noCycle && (
+          <>
+            <div className="rule-block wide">
+              <div className="rule-title">이용기간 시작</div>
+              <div className="rule-row rule-row-one">
+                <select value={form.fromPrev ? 'prev' : 'this'} onChange={(e) => setForm({ ...form, fromPrev: e.target.value === 'prev' })} aria-label="시작 달">
+                  <option value="prev">전월</option>
+                  <option value="this">당월</option>
+                </select>
+                <input type="number" min="1" max="31" placeholder="일" value={form.fromDay} onChange={(e) => setForm({ ...form, fromDay: e.target.value })} />
+              </div>
+              <div className="rule-title">이용기간 끝 <small className="muted">31 = 말일</small></div>
+              <div className="rule-row rule-row-one">
+                <select value={form.toPrev ? 'prev' : 'this'} onChange={(e) => setForm({ ...form, toPrev: e.target.value === 'prev' })} aria-label="끝 달">
+                  <option value="prev">전월</option>
+                  <option value="this">당월</option>
+                </select>
+                <input type="number" min="1" max="31" placeholder="일" value={form.toDay} onChange={(e) => setForm({ ...form, toDay: e.target.value })} />
+              </div>
+            </div>
+            <input
+              type="number"
+              min="1"
+              max="31"
+              placeholder="결제일 (청구월의 몇 일)"
+              value={form.paymentDay}
+              onChange={(e) => setForm({ ...form, paymentDay: e.target.value })}
+            />
+          </>
+        )}
+        <span className="manage-form-buttons wide">
+          {editingId && <button type="button" className="link-btn" onClick={reset}>취소</button>}
+          <button className="btn-dark" type="submit">{editingId ? '저장' : '추가'}</button>
+        </span>
+      </form>
+
+      {rows.length === 0 && <p className="muted">등록된 카드사가 없어요. 카드사를 추가하면 청구를 카드사별로 묶어 볼 수 있어요.</p>}
+      {rows.map((i) => (
+        <div className="manage-row" key={i.id}>
+          <div className="grow">
+            <b>{i.name}</b>{' '}
+            <small className="muted">
+              {cycleText(i.cycle)} · 결제수단 {payApi.rows.filter((p) => p.issuerId === i.id).length}개
+            </small>
+          </div>
+          <div className="list-right">
+            <button className="link-btn" onClick={() => startEdit(i)}>수정</button>
+            <button className="link-btn" onClick={() => remove(i)}>삭제</button>
           </div>
         </div>
       ))}
@@ -947,7 +1171,8 @@ function CategoryManager({ api }) {
   async function addMajor(e) {
     e.preventDefault();
     const name = newName.trim();
-    if (!name || list.some((c) => c.name === name)) return;
+    if (!name) return;
+    if (isDuplicateName(list, name)) return window.alert(`"${name}" 대분류가 이미 있어요.`);
     await api.add({ type, name, subs: [], order: list.length });
     setNewName('');
   }
@@ -960,7 +1185,8 @@ function CategoryManager({ api }) {
   async function addSub(e, c) {
     e.preventDefault();
     const sub = (subDrafts[c.id] ?? '').trim();
-    if (!sub || c.subs.includes(sub)) return;
+    if (!sub) return;
+    if (c.subs.some((s) => normName(s) === normName(sub))) return window.alert(`"${sub}" 소분류가 이미 있어요.`);
     await api.update(c.id, { subs: [...c.subs, sub] });
     setSubDrafts({ ...subDrafts, [c.id]: '' });
   }

@@ -101,8 +101,10 @@ export default function AuthGate({ children }) {
       repo.setOwner(session.user.id);
       setUser(session.user);
       setNotice('');
-      setPhase('ready');
+      // 서버 데이터를 먼저 받아 온 뒤에 화면을 보여 줍니다.
+      // 받기 전에 기본값을 넣으면 같은 결제수단이 두 번 생깁니다.
       await syncNow();
+      setPhase('ready');
     },
     [syncNow],
   );

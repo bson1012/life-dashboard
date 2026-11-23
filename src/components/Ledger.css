@@ -140,6 +140,18 @@
   opacity: 0.8;
 }
 
+/* 취소 금액은 빨간색 대신 회색으로 표시합니다. */
+.cancel-amt {
+  color: var(--muted);
+}
+
+/* 원거래 바로 밑에 붙는 취소내역: 들여쓰기하고 왼쪽에 선을 둡니다. */
+.list li.cancel-nested {
+  margin-left: 28px;
+  padding-left: 12px;
+  border-left: 2px solid var(--line);
+}
+
 .cancel-form {
   display: flex;
   flex-wrap: wrap;
