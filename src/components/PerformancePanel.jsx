@@ -10,7 +10,8 @@ const man = (won) => `${Math.round(won / TIER_UNIT)}만`;
 
 // 한도 대비 사용량을 보여 주는 작은 막대. 한도를 넘으면 가득 찬 상태로 보입니다.
 function LimitBar({ used, total }) {
-  const ratio = total > 0 ? Math.min(used / total, 1) : 0;
+  // 마이너스 사용액은 0으로 잘라서 막대가 채워지지 않게 합니다
+  const ratio = total > 0 ? Math.max(0, Math.min(used / total, 1)) : 0;
   const over = used >= total;
   return (
     <div className="limit-bar" role="img" aria-label={`사용 ${formatWon(used)} / 한도 ${formatWon(total)}`}>

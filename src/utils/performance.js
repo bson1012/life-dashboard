@@ -66,7 +66,8 @@ export function performanceFor(rows, payments, issuers, month) {
         achieved,
         next,
         remaining: next ? next - spent : 0,
-        ratio: target ? Math.min(1, spent / target) : null,
+        // 마이너스(취소가 더 큰 경우)는 0으로 잘라서 막대가 채워지지 않게 합니다
+        ratio: target ? Math.max(0, Math.min(1, spent / target)) : null,
         billed,
         discount,
         discountLimit: limit,
